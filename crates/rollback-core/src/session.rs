@@ -33,6 +33,10 @@ use crate::stats::{SessionEvent, SessionStats};
 /// beyond what rollback itself needs.
 const LEDGER_SLACK_FRAMES: Frame = 1_200;
 
+/// How far ahead of the present a peer checksum may refer to before it is
+/// discarded as nonsense rather than parked.
+const CHECKSUM_LOOKAHEAD_FRAMES: Frame = 3_600;
+
 /// A snapshot of the simulation taken at the *start* of `frame`.
 #[derive(Clone)]
 struct SavedState {
@@ -117,6 +121,8 @@ pub struct RollbackSession<S: Simulation> {
     frame_checksums: BTreeMap<Frame, u64>,
     /// Highest frame whose checksum has already been handed to the caller.
     checksums_emitted_through: Frame,
+    /// Peer checksums waiting for the matching local frame to become final.
+    pending_peer_checksums: BTreeMap<Frame, u64>,
 
     stats: SessionStats,
     events: Vec<SessionEvent>,
@@ -155,6 +161,7 @@ impl<S: Simulation> RollbackSession<S> {
             states: VecDeque::with_capacity(usize::from(config.state_history)),
             frame_checksums: BTreeMap::new(),
             checksums_emitted_through: NULL_FRAME,
+            pending_peer_checksums: BTreeMap::new(),
             stats: SessionStats::default(),
             events: Vec::new(),
             ended: None,
@@ -213,9 +220,17 @@ impl<S: Simulation> RollbackSession<S> {
     /// stalled would refile the same frame on the next tick, and if the first
     /// value had already gone out on the wire the peer would see two different
     /// inputs for one frame and reject the session.
+    ///
+    /// The test is on [`RollbackSession::prediction_depth`] alone, and
+    /// deliberately does *not* exempt a frame whose remote input happens to
+    /// have arrived. A batch that arrives out of order can fill in a window of
+    /// future frames while leaving a hole behind it; advancing through that
+    /// window on the grounds that "this frame is confirmed" would let the
+    /// session run arbitrarily far ahead of the hole, and the eventual rollback
+    /// into it would reach past the state buffer. The depth is measured from
+    /// the *contiguous* frontier for exactly that reason.
     pub fn would_stall(&self) -> bool {
-        !self.remote_inputs.contains_key(&self.current_frame)
-            && self.prediction_depth() >= u32::from(self.config.prediction_limit)
+        self.prediction_depth() >= u32::from(self.config.prediction_limit)
     }
 
     /// Queue the local input for frame `current + input_delay`.
@@ -287,6 +302,7 @@ impl<S: Simulation> RollbackSession<S> {
 
         self.recompute_remote_confirmed();
         self.reconcile()?;
+        self.settle_peer_checksums()?;
         self.prune();
         Ok(())
     }
@@ -298,8 +314,7 @@ impl<S: Simulation> RollbackSession<S> {
         let frame = self.current_frame;
         let confirmed = self.remote_inputs.get(&frame).copied();
 
-        if confirmed.is_none() && self.prediction_depth() >= u32::from(self.config.prediction_limit)
-        {
+        if self.would_stall() {
             // The window is full: speculating further would mean keeping a
             // state we might not be able to roll back to.
             let waiting_for = self.remote_confirmed_through + 1;
@@ -312,6 +327,8 @@ impl<S: Simulation> RollbackSession<S> {
         self.step(OutputMode::Present)?;
         self.stats.frames_presented += 1;
         self.events.push(SessionEvent::Advanced { frame, predicted });
+        // Advancing may have made a parked checksum comparable.
+        self.settle_peer_checksums()?;
         Ok(AdvanceOutcome::Advanced { frame, predicted })
     }
 
@@ -491,36 +508,81 @@ impl<S: Simulation> RollbackSession<S> {
         out
     }
 
-    /// Compare a checksum the peer computed for a confirmed frame.
+    /// Take a checksum the peer computed for one of its confirmed frames.
     ///
-    /// A mismatch is terminal: the two simulations have already diverged and
-    /// every frame after this point is fiction. Frames whose checksum we no
-    /// longer hold are ignored rather than guessed at.
+    /// The comparison is *deferred* rather than made on the spot. Two things
+    /// have to be true before it means anything:
+    ///
+    /// * we must have simulated that frame, and
+    /// * our own state at that frame must be final -- every input before it
+    ///   confirmed -- or we would be comparing a state that a pending rollback
+    ///   is about to correct, and reporting a desync that does not exist.
+    ///
+    /// Neither is guaranteed at arrival time. The peer sends a checksum as soon
+    /// as the frame is final *for it*, and whichever peer is running slightly
+    /// ahead reaches that point first; the one behind would otherwise discard
+    /// every checksum it was ever sent, leaving desync detection working in
+    /// only one direction. So checksums are parked here and settled as soon as
+    /// both conditions hold.
     pub fn verify_peer_checksum(&mut self, frame: Frame, remote: u64) -> Result<(), SessionError> {
-        let Some(&local) = self.frame_checksums.get(&frame) else {
-            return Ok(());
-        };
-        self.stats.checksums_compared += 1;
-
-        if local == remote {
-            self.events.push(SessionEvent::ChecksumMatched {
-                frame,
-                checksum: local,
-            });
+        // Refuse to park checksums for frames far beyond anything we could
+        // reach, so a peer sending nonsense cannot grow this map without bound.
+        if frame < 0 || frame > self.current_frame + CHECKSUM_LOOKAHEAD_FRAMES {
             return Ok(());
         }
+        self.pending_peer_checksums.insert(frame, remote);
+        self.settle_peer_checksums()
+    }
 
-        self.events.push(SessionEvent::Desync {
-            frame,
-            local,
-            remote,
-        });
-        self.ended = Some(EndReason::Desync { frame });
-        Err(SessionError::Desync {
-            frame,
-            local,
-            remote,
-        })
+    /// Compare every parked checksum whose frame has become final locally.
+    ///
+    /// A mismatch is terminal: the two simulations have already diverged and
+    /// every frame after this point is fiction.
+    fn settle_peer_checksums(&mut self) -> Result<(), SessionError> {
+        // Our state at the start of frame `f` is final once every input before
+        // `f` is confirmed (`f <= remote_confirmed_through + 1`) and we have
+        // actually simulated it (`f < current_frame`, which is exactly when the
+        // ledger holds an entry for it).
+        let limit = (self.remote_confirmed_through + 1).min(self.current_frame - 1);
+        let ready: Vec<Frame> = self
+            .pending_peer_checksums
+            .range(..=limit)
+            .map(|(&frame, _)| frame)
+            .collect();
+
+        for frame in ready {
+            let remote = self
+                .pending_peer_checksums
+                .remove(&frame)
+                .expect("frame came from this map");
+            let Some(&local) = self.frame_checksums.get(&frame) else {
+                // Pruned before the peer got round to it. Nothing to compare
+                // against, and guessing would be worse than staying quiet.
+                continue;
+            };
+            self.stats.checksums_compared += 1;
+
+            if local == remote {
+                self.events.push(SessionEvent::ChecksumMatched {
+                    frame,
+                    checksum: local,
+                });
+                continue;
+            }
+
+            self.events.push(SessionEvent::Desync {
+                frame,
+                local,
+                remote,
+            });
+            self.ended = Some(EndReason::Desync { frame });
+            return Err(SessionError::Desync {
+                frame,
+                local,
+                remote,
+            });
+        }
+        Ok(())
     }
 
     /// End the session if the peer has been silent for too long.
@@ -555,6 +617,7 @@ impl<S: Simulation> RollbackSession<S> {
         self.remote_inputs = self.remote_inputs.split_off(&horizon);
         self.used_remote = self.used_remote.split_off(&horizon);
         self.frame_checksums = self.frame_checksums.split_off(&horizon);
+        self.pending_peer_checksums = self.pending_peer_checksums.split_off(&horizon);
     }
 }
 
@@ -760,6 +823,39 @@ mod tests {
     }
 
     #[test]
+    fn a_hole_behind_an_out_of_order_batch_still_stalls_the_session() {
+        // Regression: a batch covering frames 30..37 arrives while frames 1..29
+        // are still missing. The remote input for the current frame is then
+        // "known" even though everything behind it is a guess. Advancing on
+        // that basis would run past the state buffer and make the eventual
+        // rollback into the hole impossible.
+        let config = SessionConfig::default();
+        let mut s = session(config);
+        s.add_remote_inputs(1, &[PlayerInput(0x11); 40]).unwrap();
+        // Frames 1..40 are all present and contiguous, so nothing stalls yet.
+        drive(&mut s, 12, PlayerInput(0x01));
+        assert_eq!(s.current_frame(), 12);
+
+        // Now the same situation with a hole: a fresh session that only ever
+        // hears about frames 30..37.
+        let mut holed = session(config);
+        holed.add_remote_inputs(30, &[PlayerInput(0x22); 8]).unwrap();
+        for _ in 0..60 {
+            if holed.would_stall() {
+                break;
+            }
+            holed.add_local_input(PlayerInput(0x01)).unwrap();
+            holed.advance().unwrap();
+        }
+        assert!(holed.would_stall(), "the hole must stop the session");
+        assert!(
+            holed.current_frame() <= Frame::from(config.prediction_limit) + 1,
+            "advanced to frame {} despite a hole at frame 1",
+            holed.current_frame()
+        );
+    }
+
+    #[test]
     fn future_inputs_arriving_early_are_kept_for_later() {
         let mut s = session(SessionConfig::default());
         s.add_remote_inputs(30, &[PlayerInput(0x77)]).unwrap();
@@ -814,11 +910,71 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_checksum_frame_is_ignored_rather_than_guessed() {
+    fn an_absurd_checksum_frame_is_discarded_rather_than_parked() {
         let mut s = session(SessionConfig::default());
         s.verify_peer_checksum(999_999, 0xDEAD).unwrap();
+        s.verify_peer_checksum(-5, 0xDEAD).unwrap();
         assert_eq!(s.stats().checksums_compared, 0);
+        assert!(s.pending_peer_checksums.is_empty());
         assert!(s.end_reason().is_none());
+    }
+
+    #[test]
+    fn a_checksum_that_arrives_early_is_compared_once_the_frame_is_final() {
+        // The peer that is running slightly ahead sends a checksum for a frame
+        // this side has not reached. Discarding it would leave desync detection
+        // working in one direction only.
+        let mut s = session(SessionConfig::default());
+        let reference = {
+            let mut r = session(SessionConfig::default());
+            r.add_remote_inputs(1, &[PlayerInput(0x01); 8]).unwrap();
+            drive(&mut r, 5, PlayerInput(0x02));
+            r.confirmed_checksums()[0]
+        };
+        let (frame, checksum) = reference;
+
+        s.verify_peer_checksum(frame, checksum).unwrap();
+        assert_eq!(s.stats().checksums_compared, 0, "not comparable yet");
+        assert_eq!(s.pending_peer_checksums.len(), 1, "but not thrown away");
+
+        s.add_remote_inputs(1, &[PlayerInput(0x01); 8]).unwrap();
+        drive(&mut s, 5, PlayerInput(0x02));
+        assert_eq!(s.stats().checksums_compared, 1, "settled once it was final");
+        assert!(s.pending_peer_checksums.is_empty());
+        assert!(s.end_reason().is_none());
+    }
+
+    #[test]
+    fn a_checksum_is_not_compared_while_a_correction_is_still_pending() {
+        // Frame 3's state is only final once the input for frame 2 is
+        // confirmed. Comparing before that would report a desync against a
+        // state a rollback is about to rewrite.
+        let mut s = session(SessionConfig::default());
+        drive(&mut s, 6, PlayerInput(0x01));
+        let bogus = 0xDEAD_BEEF_u64;
+        s.verify_peer_checksum(3, bogus).unwrap();
+        assert_eq!(
+            s.stats().checksums_compared,
+            0,
+            "frame 3 is built on an unconfirmed guess; nothing to compare yet"
+        );
+        assert!(s.end_reason().is_none());
+    }
+
+    #[test]
+    fn an_early_checksum_that_disagrees_still_ends_the_session() {
+        let mut s = session(SessionConfig::default());
+        s.verify_peer_checksum(0, 0xBAD_C0FFEE).unwrap();
+        s.add_remote_inputs(1, &[PlayerInput(0x01); 4]).unwrap();
+        let outcome = {
+            s.add_local_input(PlayerInput(0x02)).unwrap();
+            s.advance()
+        };
+        assert!(
+            matches!(outcome, Err(SessionError::Desync { frame: 0, .. })),
+            "got {outcome:?}"
+        );
+        assert_eq!(s.end_reason(), Some(EndReason::Desync { frame: 0 }));
     }
 
     #[test]
