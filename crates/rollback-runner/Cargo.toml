@@ -1,0 +1,14 @@
+[package]
+name = "rollback-runner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Glue: handshake, per-frame session loop, telemetry publishing and frame pacing."
+
+[dependencies]
+rollback-core.workspace = true
+rollback-net.workspace = true
+rollback-telemetry.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true

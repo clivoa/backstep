@@ -82,6 +82,8 @@ pub enum SessionError {
     PeerTimeout { elapsed_ms: u64, limit_ms: u32 },
     #[error("peer sent two different inputs for frame {frame}")]
     PeerContradiction { frame: Frame },
+    #[error("local input for frame {frame} was queued twice with different values")]
+    LocalInputRefiled { frame: Frame },
     #[error("session already ended: {0:?}")]
     Ended(EndReason),
     #[error(transparent)]
@@ -205,6 +207,17 @@ impl<S: Simulation> RollbackSession<S> {
         self.ended.get_or_insert(EndReason::Closed);
     }
 
+    /// True when [`RollbackSession::advance`] would refuse to move.
+    ///
+    /// Callers check this *before* queueing a local input: queueing one while
+    /// stalled would refile the same frame on the next tick, and if the first
+    /// value had already gone out on the wire the peer would see two different
+    /// inputs for one frame and reject the session.
+    pub fn would_stall(&self) -> bool {
+        !self.remote_inputs.contains_key(&self.current_frame)
+            && self.prediction_depth() >= u32::from(self.config.prediction_limit)
+    }
+
     /// Queue the local input for frame `current + input_delay`.
     ///
     /// Returns the frame the input was filed against, which is what the caller
@@ -212,6 +225,13 @@ impl<S: Simulation> RollbackSession<S> {
     pub fn add_local_input(&mut self, input: PlayerInput) -> Result<Frame, SessionError> {
         self.ensure_running()?;
         let frame = self.current_frame + Frame::from(self.config.input_delay);
+        if let Some(&existing) = self.local_inputs.get(&frame) {
+            if existing != input {
+                // The frame may already have been sent. Changing it now would
+                // desynchronise us from our own peer's copy of our inputs.
+                return Err(SessionError::LocalInputRefiled { frame });
+            }
+        }
         self.local_inputs.insert(frame, input);
         self.local_queued_through = self.local_queued_through.max(frame);
         Ok(frame)

@@ -244,7 +244,7 @@ impl DisconnectReason {
 
 /// A peer's own view of the session, exchanged so one report can compare both
 /// ends without needing to reach the remote log while the match is running.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct TelemetrySummary {
     pub frames_presented: u64,
     pub frames_resimulated: u64,

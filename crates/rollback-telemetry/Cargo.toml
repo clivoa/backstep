@@ -4,5 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Prometheus exporter, JSONL session log and process resource sampling."
 
 [dependencies]
+rollback-core.workspace = true
+rollback-net.workspace = true
+serde.workspace = true
+serde_json.workspace = true

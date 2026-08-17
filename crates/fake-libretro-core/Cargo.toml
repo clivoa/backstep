@@ -1,0 +1,13 @@
+[package]
+name = "fake-libretro-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A tiny deterministic libretro core for CI, so the FFI host can be tested without any protected ROM."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+libc.workspace = true

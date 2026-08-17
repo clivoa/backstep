@@ -1,10 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/fake-libretro-core",
     "crates/rollback-core",
     "crates/rollback-net",
     "crates/rollback-arena",
     "crates/rollback-libretro",
+    "crates/rollback-runner",
     "crates/rollback-telemetry",
     "crates/rollback-client",
     "crates/rollback-bot",
@@ -23,6 +25,7 @@ rollback-net = { path = "crates/rollback-net" }
 rollback-arena = { path = "crates/rollback-arena" }
 rollback-libretro = { path = "crates/rollback-libretro" }
 rollback-telemetry = { path = "crates/rollback-telemetry" }
+rollback-runner = { path = "crates/rollback-runner" }
 
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

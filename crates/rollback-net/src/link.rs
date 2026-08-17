@@ -16,7 +16,7 @@ const WINDOW: u32 = 64;
 /// How long an unacknowledged send is kept for RTT matching.
 const RTT_SAMPLE_TTL_MS: u64 = 5_000;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LinkStats {
     pub packets_sent: u64,
     pub bytes_sent: u64,

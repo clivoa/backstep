@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "anyhow"
+version = "1.0.104"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -85,6 +91,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fake-libretro-core"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -149,6 +162,16 @@ name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+
+[[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -315,6 +338,14 @@ dependencies = [
 [[package]]
 name = "rollback-libretro"
 version = "0.1.0"
+dependencies = [
+ "fake-libretro-core",
+ "libc",
+ "libloading",
+ "rollback-core",
+ "sha2",
+ "thiserror",
+]
 
 [[package]]
 name = "rollback-net"
@@ -333,8 +364,25 @@ name = "rollback-report"
 version = "0.1.0"
 
 [[package]]
+name = "rollback-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rollback-core",
+ "rollback-net",
+ "rollback-telemetry",
+ "thiserror",
+]
+
+[[package]]
 name = "rollback-telemetry"
 version = "0.1.0"
+dependencies = [
+ "rollback-core",
+ "rollback-net",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "rustix"
