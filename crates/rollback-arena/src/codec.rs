@@ -91,7 +91,10 @@ mod tests {
         let err = Reader::new(&[0u8; 7], 8).unwrap_err();
         assert!(matches!(
             err,
-            SimulationError::StateSize { expected: 8, actual: 7 }
+            SimulationError::StateSize {
+                expected: 8,
+                actual: 7
+            }
         ));
     }
 }

@@ -136,7 +136,9 @@ pub unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> bool {
             let format = unsafe { *(data as *const c_uint) };
             let supported = matches!(
                 format,
-                RETRO_PIXEL_FORMAT_0RGB1555 | RETRO_PIXEL_FORMAT_XRGB8888 | RETRO_PIXEL_FORMAT_RGB565
+                RETRO_PIXEL_FORMAT_0RGB1555
+                    | RETRO_PIXEL_FORMAT_XRGB8888
+                    | RETRO_PIXEL_FORMAT_RGB565
             );
             if supported {
                 with_host(|h| h.pixel_format = format);
@@ -339,6 +341,8 @@ pub const fn rgb1555_to_xrgb8888(p: u16) -> u32 {
     ((r << 3 | r >> 2) << 16) | ((g << 3 | g >> 2) << 8) | (b << 3 | b >> 2)
 }
 
+/// # Safety
+/// Called by the core; both arguments are plain integers.
 pub unsafe extern "C" fn audio_sample(left: i16, right: i16) {
     with_host(|h| {
         if h.discard_output {
@@ -362,6 +366,8 @@ pub unsafe extern "C" fn audio_sample_batch(data: *const i16, frames: usize) -> 
     frames
 }
 
+/// # Safety
+/// Called by the core; takes no arguments.
 pub unsafe extern "C" fn input_poll() {
     with_host(|h| h.input_polls += 1);
 }

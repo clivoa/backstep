@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# Boot script for the remote peer.
+#
+# Deliberately small: it installs what is needed to build and run the bot, sets
+# up the periodic log sync, and arms the shutdown timer. The actual binaries and
+# the ROM arrive from S3, uploaded by `just aws-up`, rather than being built
+# here -- a t3.small compiling FBNeo would take longer than the session.
+set -euxo pipefail
+
+exec > >(tee -a /var/log/rollback-bootstrap.log) 2>&1
+
+PROJECT="${project}"
+BUCKET="${bucket}"
+REGION="${region}"
+SESSION_KEY_PARAM="${session_key_param}"
+SESSION_PORT="${session_port}"
+AUTO_SHUTDOWN_HOURS="${auto_shutdown_hours}"
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends \
+    awscli \
+    ca-certificates \
+    unzip
+
+install -d -m 0755 /opt/rollback/bin
+install -d -m 0755 /opt/rollback/artifacts/logs
+install -d -m 0755 /opt/rollback/artifacts/system
+install -d -m 0700 /opt/rollback/secrets
+
+# --- shutdown deadline -----------------------------------------------------
+#
+# The instance terminates itself after the configured window. Combined with
+# instance_initiated_shutdown_behavior=terminate, a forgotten lab costs a few
+# hours rather than a month.
+shutdown -h "+$((AUTO_SHUTDOWN_HOURS * 60))" \
+    "rollback-netcode lab: automatic termination after $${AUTO_SHUTDOWN_HOURS}h"
+
+# --- environment for the bot ----------------------------------------------
+
+cat >/opt/rollback/env <<ENV
+ROLLBACK_PROJECT=$${PROJECT}
+ROLLBACK_BUCKET=$${BUCKET}
+AWS_DEFAULT_REGION=$${REGION}
+ROLLBACK_SESSION_PORT=$${SESSION_PORT}
+ROLLBACK_SESSION_KEY_PARAM=$${SESSION_KEY_PARAM}
+ROLLBACK_SESSION_KEY_FILE=/opt/rollback/secrets/session.key
+ENV
+chmod 0644 /opt/rollback/env
+
+# Fetch the session key from SSM into a root-only file.
+#
+# It goes to a file rather than into the unit's Environment= because the latter
+# is readable by any user through `systemctl show`.
+cat >/usr/local/bin/rollback-fetch-key <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck disable=SC1091
+source /opt/rollback/env
+aws ssm get-parameter \
+    --name "$ROLLBACK_SESSION_KEY_PARAM" \
+    --with-decryption \
+    --query 'Parameter.Value' \
+    --output text \
+    --region "$AWS_DEFAULT_REGION" >/opt/rollback/secrets/session.key
+chmod 0600 /opt/rollback/secrets/session.key
+SCRIPT
+chmod 0755 /usr/local/bin/rollback-fetch-key
+
+# --- log sync --------------------------------------------------------------
+#
+# Runs periodically and once more at shutdown, so `just collect` finds a
+# complete set even if the session ended badly.
+cat >/usr/local/bin/rollback-sync-logs <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck disable=SC1091
+source /opt/rollback/env
+aws s3 sync /opt/rollback/artifacts "s3://$ROLLBACK_BUCKET/remote/artifacts" \
+    --region "$AWS_DEFAULT_REGION" --only-show-errors
+aws s3 cp /var/log/rollback-bootstrap.log \
+    "s3://$ROLLBACK_BUCKET/remote/bootstrap.log" \
+    --region "$AWS_DEFAULT_REGION" --only-show-errors || true
+SCRIPT
+chmod 0755 /usr/local/bin/rollback-sync-logs
+
+cat >/etc/systemd/system/rollback-sync.service <<'UNIT'
+[Unit]
+Description=Sync rollback session logs to S3
+# Also fires on the way down, which is when it matters most.
+DefaultDependencies=no
+Before=shutdown.target
+Conflicts=reboot.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=false
+ExecStart=/usr/local/bin/rollback-sync-logs
+ExecStop=/usr/local/bin/rollback-sync-logs
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+cat >/etc/systemd/system/rollback-sync.timer <<'UNIT'
+[Unit]
+Description=Periodic rollback log sync
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+# --- the peer service ------------------------------------------------------
+#
+# Not started here: `just aws-up` uploads the binary and the ROM, then starts
+# it with the arguments for the run. Starting a bot before its binary exists
+# would just crash-loop.
+cat >/etc/systemd/system/rollback-bot.service <<'UNIT'
+[Unit]
+Description=Rollback netcode remote peer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rollback
+EnvironmentFile=/opt/rollback/env
+ExecStartPre=/usr/local/bin/rollback-fetch-key
+ExecStart=/opt/rollback/bin/run-peer.sh
+ExecStopPost=/usr/local/bin/rollback-sync-logs
+Restart=no
+# The bot is not privileged and has no reason to write outside its own tree.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/rollback/artifacts /opt/rollback/secrets
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now rollback-sync.timer
+systemctl enable rollback-sync.service
+
+touch /opt/rollback/BOOTSTRAP_COMPLETE
+echo "bootstrap complete: waiting for just aws-up to upload the binaries"

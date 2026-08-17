@@ -62,7 +62,8 @@ impl Authenticator {
         }
         let mut key = [0u8; KEY_LEN];
         for (i, byte) in key.iter_mut().enumerate() {
-            *byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|_| AuthError::BadKeyHex)?;
+            *byte =
+                u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).map_err(|_| AuthError::BadKeyHex)?;
         }
         Ok(Authenticator { key })
     }
@@ -183,13 +184,19 @@ mod tests {
             AuthError::BadKeyLength(2)
         );
         let bad = "z".repeat(64);
-        assert_eq!(Authenticator::from_hex(&bad).unwrap_err(), AuthError::BadKeyHex);
+        assert_eq!(
+            Authenticator::from_hex(&bad).unwrap_err(),
+            AuthError::BadKeyHex
+        );
     }
 
     #[test]
     fn the_key_never_appears_in_debug_output() {
         let rendered = format!("{:?}", Authenticator::new([0xAB; KEY_LEN]));
-        assert!(!rendered.contains("ab"), "debug leaked key bytes: {rendered}");
+        assert!(
+            !rendered.contains("ab"),
+            "debug leaked key bytes: {rendered}"
+        );
         assert!(rendered.contains("redacted"));
     }
 }

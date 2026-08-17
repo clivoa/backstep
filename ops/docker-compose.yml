@@ -1,0 +1,61 @@
+# Local observability stack: Prometheus scrapes the exporter, Grafana draws it.
+#
+# Both run on the *host* network, and both listen on 127.0.0.1 only.
+#
+# Host networking is the point rather than a shortcut. The exporter binds to
+# 127.0.0.1:9898 by design -- there is no metrics port on any public interface
+# at either end of this lab -- and a container on the default bridge simply
+# cannot reach a loopback-only listener on the host. The alternative would be to
+# open the exporter to 0.0.0.0 so a bridged container could reach it, which
+# trades the lab's one real security property for a container nicety.
+#
+# Consequence: this file is Linux-only. On macOS or Windows, run Prometheus and
+# Grafana natively, or point the scrape config at host.docker.internal and
+# accept a non-loopback exporter.
+name: rollback-netcode
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: rollback-prometheus
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # A lab session is minutes long; a week of retention is plenty and keeps
+      # the volume small enough to throw away.
+      - --storage.tsdb.retention.time=7d
+      - --web.listen-address=127.0.0.1:9090
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: rollback-grafana
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - prometheus
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: "3000"
+      # Anonymous viewer access: it is bound to loopback, and a login prompt on
+      # a single-user local dashboard is friction without a threat model.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_ADMIN_PASSWORD: rollback-local-only
+      GF_USERS_DEFAULT_THEME: dark
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/rollback.json
+
+volumes:
+  prometheus-data:
+  grafana-data:

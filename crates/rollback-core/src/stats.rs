@@ -47,7 +47,9 @@ impl SessionStats {
         if self.predicted_frames == 0 {
             return 1.0;
         }
-        let correct = self.predicted_frames.saturating_sub(self.mispredicted_frames);
+        let correct = self
+            .predicted_frames
+            .saturating_sub(self.mispredicted_frames);
         correct as f64 / self.predicted_frames as f64
     }
 
@@ -93,11 +95,7 @@ pub enum SessionEvent {
     /// The session refused to advance: too far ahead of the peer.
     Stalled { frame: Frame, waiting_for: Frame },
     /// A misprediction was corrected.
-    RolledBack {
-        from: Frame,
-        to: Frame,
-        depth: u32,
-    },
+    RolledBack { from: Frame, to: Frame, depth: u32 },
     /// A confirmed-frame checksum matched the peer's.
     ChecksumMatched { frame: Frame, checksum: u64 },
     /// A confirmed-frame checksum did not match. The session is over.

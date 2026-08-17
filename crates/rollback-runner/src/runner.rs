@@ -1,5 +1,7 @@
 //! The per-frame session loop.
 
+#[cfg(test)]
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -7,9 +9,7 @@ use rollback_core::{
     AdvanceOutcome, EndReason, Frame, PlayerHandle, PlayerInput, RollbackSession, SessionConfig,
     SessionError, Simulation,
 };
-use rollback_net::{
-    DisconnectReason, Message, TransportError, UdpTransport, INPUT_REDUNDANCY,
-};
+use rollback_net::{DisconnectReason, Message, TransportError, UdpTransport, INPUT_REDUNDANCY};
 use rollback_telemetry::{
     jsonl::Record, Exporter, MetricsSnapshot, ProcessStats, SessionInfo, SessionLog,
 };
@@ -76,8 +76,7 @@ impl<S: Simulation> SessionRunner<S> {
         transport: UdpTransport,
         config: RunnerConfig,
     ) -> Result<Self, RunnerError> {
-        let session =
-            RollbackSession::new(simulation, config.session, config.local_player)?;
+        let session = RollbackSession::new(simulation, config.session, config.local_player)?;
         let frame_duration = config.session.frame_duration();
 
         let log = SessionLog::create(&config.log_dir, &config.session_name, &config.info).ok();
@@ -201,7 +200,9 @@ impl<S: Simulation> SessionRunner<S> {
             if let Err(e) = self.session.check_peer_timeout(elapsed) {
                 self.finish_with(EndReason::PeerTimeout, DisconnectReason::Timeout)?;
                 return match e {
-                    SessionError::PeerTimeout { .. } => Ok(StepOutcome::Ended(EndReason::PeerTimeout)),
+                    SessionError::PeerTimeout { .. } => {
+                        Ok(StepOutcome::Ended(EndReason::PeerTimeout))
+                    }
                     other => Err(other.into()),
                 };
             }
@@ -419,11 +420,11 @@ mod tests {
         dir
     }
 
-    fn config(player: PlayerHandle, dir: &PathBuf) -> RunnerConfig {
+    fn config(player: PlayerHandle, dir: &Path) -> RunnerConfig {
         RunnerConfig {
             session: SessionConfig::default(),
             local_player: player,
-            log_dir: dir.clone(),
+            log_dir: dir.to_path_buf(),
             session_name: format!("{player:?}"),
             exporter_addr: None,
             info: SessionInfo::new(SimulationKind::Arena, "natural", &format!("{player:?}")),
@@ -431,7 +432,7 @@ mod tests {
     }
 
     fn linked_pair(
-        dir: &PathBuf,
+        dir: &Path,
         profile: NetworkProfile,
     ) -> (SessionRunner<CounterSim>, SessionRunner<CounterSim>) {
         let auth = Authenticator::from_passphrase("runner-test");
@@ -469,9 +470,15 @@ mod tests {
             p1.pace();
         }
 
-        assert!(p1.session().confirmed_frame() > 200, "the link must be live");
+        assert!(
+            p1.session().confirmed_frame() > 200,
+            "the link must be live"
+        );
         assert!(p1.snapshot().local.predicted_frames > 0, "it had to guess");
-        assert!(p1.snapshot().local.rollbacks > 0, "and it guessed wrong sometimes");
+        assert!(
+            p1.snapshot().local.rollbacks > 0,
+            "and it guessed wrong sometimes"
+        );
         assert!(!p1.snapshot().desync);
         assert!(!p2.snapshot().desync);
         assert!(

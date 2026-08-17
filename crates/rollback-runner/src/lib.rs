@@ -26,6 +26,9 @@ pub mod app;
 pub mod handshake;
 pub mod runner;
 
-pub use app::{app_commit_bytes, digest_hex, hash_or_absent, identity, session_key_from_env, session_name, APP_COMMIT};
+pub use app::{
+    app_commit_bytes, digest_hex, hash_or_absent, identity, session_key_from_env, session_name,
+    APP_COMMIT,
+};
 pub use handshake::{handshake, HandshakeError, Role};
 pub use runner::{RunnerConfig, SessionRunner, StepOutcome};

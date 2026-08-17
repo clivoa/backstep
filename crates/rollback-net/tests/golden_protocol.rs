@@ -91,7 +91,10 @@ fn golden_hello_ack_accepted_and_rejected() {
 
     // Identical but for the trailing reason byte: 00 = accepted, 07 = ROM hash.
     assert_eq!(accepted.len(), rejected.len());
-    assert_eq!(&accepted[..accepted.len() - 2], &rejected[..rejected.len() - 2]);
+    assert_eq!(
+        &accepted[..accepted.len() - 2],
+        &rejected[..rejected.len() - 2]
+    );
     assert!(accepted.ends_with("00"));
     assert!(rejected.ends_with("07"));
     assert!(accepted.starts_with("5242010202000000"), "{accepted}");
@@ -216,7 +219,8 @@ fn golden_telemetry_field_order() {
     assert_eq!(
         encoded(0, Message::Telemetry(summary)),
         concat!(
-            "52420105", "00000000",
+            "52420105",
+            "00000000",
             "0100000000000000", // frames_presented
             "0200000000000000", // frames_resimulated
             "0400000000000000", // rollbacks

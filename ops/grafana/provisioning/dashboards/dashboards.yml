@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: rollback
+    orgId: 1
+    folder: Rollback Netcode
+    type: file
+    # Versioned in git and mounted read-only: the dashboard is part of the
+    # experiment, not something that drifts in someone's browser.
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 15
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

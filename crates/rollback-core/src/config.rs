@@ -38,7 +38,9 @@ impl std::str::FromStr for SimulationKind {
         match s {
             "arena" => Ok(SimulationKind::Arena),
             "sfa3" => Ok(SimulationKind::Sfa3),
-            other => Err(format!("unknown simulation '{other}' (expected arena|sfa3)")),
+            other => Err(format!(
+                "unknown simulation '{other}' (expected arena|sfa3)"
+            )),
         }
     }
 }
@@ -130,11 +132,12 @@ impl NetworkProfile {
 
     /// True when the profile leaves datagrams completely untouched.
     pub fn is_transparent(&self) -> bool {
-        *self == NetworkProfile::NATURAL || (self.delay_ms == 0
-            && self.jitter_ms == 0
-            && self.loss_permille == 0
-            && self.duplicate_permille == 0
-            && self.reorder_permille == 0)
+        *self == NetworkProfile::NATURAL
+            || (self.delay_ms == 0
+                && self.jitter_ms == 0
+                && self.loss_permille == 0
+                && self.duplicate_permille == 0
+                && self.reorder_permille == 0)
     }
 }
 
@@ -218,11 +221,7 @@ impl SessionConfig {
         h.write(self.simulation.as_str().as_bytes());
         h.write(&self.seed.to_le_bytes());
         h.write(&self.tick_rate_hz.to_le_bytes());
-        h.write(&[
-            self.input_delay,
-            self.prediction_limit,
-            self.state_history,
-        ]);
+        h.write(&[self.input_delay, self.prediction_limit, self.state_history]);
         h.write(&self.checksum_interval.to_le_bytes());
         h.finish()
     }

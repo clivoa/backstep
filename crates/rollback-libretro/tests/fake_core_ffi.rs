@@ -98,7 +98,10 @@ fn advancing_produces_video_and_serialisable_state() {
     let mut sim = load();
 
     let before = sim.save_state();
-    sim.advance_frame([press(&[Button::Right]), PlayerInput::NEUTRAL], OutputMode::Present);
+    sim.advance_frame(
+        [press(&[Button::Right]), PlayerInput::NEUTRAL],
+        OutputMode::Present,
+    );
     let after = sim.save_state();
 
     assert_eq!(before.len(), fake_libretro_core::STATE_SIZE);
@@ -116,14 +119,20 @@ fn a_state_restores_exactly() {
     let _guard = serialised();
     let mut sim = load();
     for f in 0..60u16 {
-        sim.advance_frame([PlayerInput(f & 0xFF), PlayerInput(f * 3 & 0xFF)], OutputMode::Present);
+        sim.advance_frame(
+            [PlayerInput(f & 0xFF), PlayerInput((f * 3) & 0xFF)],
+            OutputMode::Present,
+        );
     }
 
     let snapshot = sim.save_state();
     let checksum = sim.checksum();
 
     for _ in 0..30 {
-        sim.advance_frame([press(&[Button::Left]), press(&[Button::Attack])], OutputMode::Present);
+        sim.advance_frame(
+            [press(&[Button::Left]), press(&[Button::Attack])],
+            OutputMode::Present,
+        );
     }
     assert_ne!(sim.checksum(), checksum);
 
@@ -154,7 +163,10 @@ fn resimulated_frames_produce_no_video_or_audio() {
     let presented = sim.video();
 
     for _ in 0..10 {
-        sim.advance_frame([press(&[Button::Right]), PlayerInput::NEUTRAL], OutputMode::Resimulate);
+        sim.advance_frame(
+            [press(&[Button::Right]), PlayerInput::NEUTRAL],
+            OutputMode::Resimulate,
+        );
     }
 
     assert!(
@@ -207,8 +219,7 @@ fn a_full_rollback_session_over_the_ffi_converges() {
     let local = press(&[Button::Right]);
 
     let clean_checksum = {
-        let mut session =
-            RollbackSession::new(load(), config, PlayerHandle::P1).unwrap();
+        let mut session = RollbackSession::new(load(), config, PlayerHandle::P1).unwrap();
         session.add_remote_inputs(1, &remote).unwrap();
         for _ in 0..200 {
             session.add_local_input(local).unwrap();
@@ -233,10 +244,7 @@ fn a_full_rollback_session_over_the_ffi_converges() {
         let target = f - 3;
         if target > delivered {
             session
-                .add_remote_inputs(
-                    delivered + 1,
-                    &remote[delivered as usize..target as usize],
-                )
+                .add_remote_inputs(delivered + 1, &remote[delivered as usize..target as usize])
                 .unwrap();
             delivered = target;
         }

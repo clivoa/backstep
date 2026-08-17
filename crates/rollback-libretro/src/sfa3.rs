@@ -373,7 +373,7 @@ mod tests {
         let inputs: Vec<PlayerInput> = (0..3_000).map(|_| bot.decide()).collect();
         assert!(inputs.iter().any(|i| i.contains(Button::Attack)));
         assert!(inputs.iter().any(|i| i.contains(Button::Left)));
-        assert!(inputs.iter().any(|i| *i == PlayerInput::NEUTRAL));
+        assert!(inputs.contains(&PlayerInput::NEUTRAL));
     }
 
     #[test]
@@ -381,8 +381,10 @@ mod tests {
         let mut bot = Sfa3Bot::new(9);
         for _ in 0..10_000 {
             let i = bot.decide();
-            assert!(!(i.contains(Button::Left) && i.contains(Button::Right)));
-            assert!(!(i.contains(Button::Up) && i.contains(Button::Down)));
+            let horizontal = i.contains(Button::Left) && i.contains(Button::Right);
+            assert!(!horizontal, "left and right held together");
+            let vertical = i.contains(Button::Up) && i.contains(Button::Down);
+            assert!(!vertical, "up and down held together");
         }
     }
 }

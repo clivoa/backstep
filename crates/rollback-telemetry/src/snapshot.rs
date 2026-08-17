@@ -180,7 +180,8 @@ mod tests {
 
     #[test]
     fn the_summary_mirrors_the_local_counters() {
-        let mut snap = MetricsSnapshot::new(SessionInfo::new(SimulationKind::Arena, "natural", "p1"));
+        let mut snap =
+            MetricsSnapshot::new(SessionInfo::new(SimulationKind::Arena, "natural", "p1"));
         snap.local.frames_presented = 10_800;
         snap.local.rollbacks = 421;
         snap.local.max_rollback_depth = 8;

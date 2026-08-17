@@ -100,7 +100,9 @@ pub fn handshake(
                     return Ok(identity);
                 }
                 Message::Disconnect(_) => {
-                    return Err(HandshakeError::Refused("peer disconnected during handshake"))
+                    return Err(HandshakeError::Refused(
+                        "peer disconnected during handshake",
+                    ))
                 }
                 // A stray `Hello` at the client, or an ack at the host: the peer
                 // is retrying and we have not answered yet. Ignore and continue.
@@ -214,9 +216,7 @@ mod tests {
         let mut host_identity = identity(PlayerHandle::P2);
         host_identity.rom_hash = [0xAB; 32];
         let (client, _host) = run(identity(PlayerHandle::P1), host_identity);
-        assert!(
-            matches!(client.unwrap_err(), HandshakeError::Refused(r) if r.contains("ROM")),
-        );
+        assert!(matches!(client.unwrap_err(), HandshakeError::Refused(r) if r.contains("ROM")),);
     }
 
     #[test]

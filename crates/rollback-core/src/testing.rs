@@ -60,8 +60,7 @@ impl Simulation for CounterSim {
     }
 
     fn checksum(&self) -> u64 {
-        self.frame
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        self.frame.wrapping_mul(0x9E37_79B9_7F4A_7C15)
             ^ self.acc[0].rotate_left(17)
             ^ self.acc[1].rotate_left(43)
     }
@@ -88,7 +87,10 @@ mod tests {
         let mut s = CounterSim::default();
         assert!(matches!(
             s.load_state(&[0u8; 4]),
-            Err(SimulationError::StateSize { expected: 24, actual: 4 })
+            Err(SimulationError::StateSize {
+                expected: 24,
+                actual: 4
+            })
         ));
     }
 

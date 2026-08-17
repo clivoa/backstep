@@ -62,7 +62,8 @@ impl SessionSummary {
         if self.predicted_frames == 0 {
             return 1.0;
         }
-        self.predicted_frames.saturating_sub(self.mispredicted_frames) as f64
+        self.predicted_frames
+            .saturating_sub(self.mispredicted_frames) as f64
             / self.predicted_frames as f64
     }
 
@@ -169,7 +170,9 @@ fn apply_snapshot(summary: &mut SessionSummary, snapshot: &Value) {
     summary.stalls = u(snapshot, &["local", "stalls"]);
     summary.checksums_compared = u(snapshot, &["local", "checksums_compared"]);
     summary.state_bytes = u(snapshot, &["local", "state_bytes_last"]);
-    summary.desync = dig(snapshot, &["desync"]).and_then(|x| x.as_bool()).unwrap_or(false);
+    summary.desync = dig(snapshot, &["desync"])
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false);
 
     summary.srtt_ms = u(snapshot, &["link", "srtt_micros"]) as f64 / 1000.0;
     summary.rttvar_ms = u(snapshot, &["link", "rttvar_micros"]) as f64 / 1000.0;
@@ -198,8 +201,8 @@ fn apply_snapshot(summary: &mut SessionSummary, snapshot: &Value) {
 /// not an error: the summary is built from whatever records did land and marked
 /// `complete: false`.
 pub fn read_session(path: &Path) -> Result<Session> {
-    let text = std::fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
 
     let mut summary = SessionSummary {
         name: path
@@ -304,7 +307,10 @@ mod tests {
 
     #[test]
     fn a_complete_log_yields_a_full_summary() {
-        let path = write_log("complete", &[START, &snapshot_line("session_end", 180_000, 421)]);
+        let path = write_log(
+            "complete",
+            &[START, &snapshot_line("session_end", 180_000, 421)],
+        );
         let session = read_session(&path).unwrap();
         let s = &session.summary;
 
@@ -358,7 +364,11 @@ mod tests {
     fn a_truncated_log_is_summarised_and_flagged_incomplete() {
         let path = write_log(
             "truncated",
-            &[START, &snapshot_line("metrics", 5_000, 7), "{\"record\":\"met"],
+            &[
+                START,
+                &snapshot_line("metrics", 5_000, 7),
+                "{\"record\":\"met",
+            ],
         );
         let session = read_session(&path).unwrap();
         assert!(!session.summary.complete);

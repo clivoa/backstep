@@ -159,8 +159,7 @@ mod tests {
 
     #[test]
     fn every_logical_button_is_reachable_from_the_keyboard() {
-        let bound: std::collections::HashSet<Button> =
-            KEYS.iter().map(|&(_, b)| b).collect();
+        let bound: std::collections::HashSet<Button> = KEYS.iter().map(|&(_, b)| b).collect();
         for b in Button::ALL {
             assert!(bound.contains(&b), "{b:?} has no key");
         }
@@ -177,7 +176,13 @@ mod tests {
 
     #[test]
     fn the_deadzone_is_large_enough_to_ignore_drift() {
-        // A worn stick resting at 30% deflection must read as neutral.
-        assert!(AXIS_THRESHOLD > i16::MAX / 3);
+        // A worn stick resting at 30% deflection must read as neutral: a stray
+        // direction here shows up on the peer as a misprediction, which is a
+        // confusing way to find out your hardware is failing.
+        let resting_drift = (f64::from(i16::MAX) * 0.30) as i16;
+        assert!(
+            resting_drift < AXIS_THRESHOLD,
+            "a stick resting at {resting_drift} would register a direction"
+        );
     }
 }

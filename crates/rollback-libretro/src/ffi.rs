@@ -119,7 +119,8 @@ pub type retro_environment_t = unsafe extern "C" fn(cmd: c_uint, data: *mut c_vo
 pub type retro_video_refresh_t =
     unsafe extern "C" fn(data: *const c_void, width: c_uint, height: c_uint, pitch: usize);
 pub type retro_audio_sample_t = unsafe extern "C" fn(left: i16, right: i16);
-pub type retro_audio_sample_batch_t = unsafe extern "C" fn(data: *const i16, frames: usize) -> usize;
+pub type retro_audio_sample_batch_t =
+    unsafe extern "C" fn(data: *const i16, frames: usize) -> usize;
 pub type retro_input_poll_t = unsafe extern "C" fn();
 pub type retro_input_state_t =
     unsafe extern "C" fn(port: c_uint, device: c_uint, index: c_uint, id: c_uint) -> i16;

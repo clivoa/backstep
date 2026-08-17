@@ -257,7 +257,10 @@ mod tests {
         m.on_received(10_000, 40);
         assert_eq!(m.stats().highest_sequence, 10_000);
         assert!(m.on_received(9_999, 40), "still inside the window");
-        assert!(m.on_received(5, 40), "far outside the window, accepted once");
+        assert!(
+            m.on_received(5, 40),
+            "far outside the window, accepted once"
+        );
     }
 
     #[test]

@@ -81,7 +81,11 @@ pub enum SessionError {
     #[error("cannot roll back to frame {frame}: oldest saved state is {oldest}")]
     HistoryExhausted { frame: Frame, oldest: Frame },
     #[error("desync at confirmed frame {frame}: local {local:#018x} != remote {remote:#018x}")]
-    Desync { frame: Frame, local: u64, remote: u64 },
+    Desync {
+        frame: Frame,
+        local: u64,
+        remote: u64,
+    },
     #[error("peer went silent for {elapsed_ms} ms (limit {limit_ms} ms)")]
     PeerTimeout { elapsed_ms: u64, limit_ms: u32 },
     #[error("peer sent two different inputs for frame {frame}")]
@@ -319,14 +323,16 @@ impl<S: Simulation> RollbackSession<S> {
             // state we might not be able to roll back to.
             let waiting_for = self.remote_confirmed_through + 1;
             self.stats.stalls += 1;
-            self.events.push(SessionEvent::Stalled { frame, waiting_for });
+            self.events
+                .push(SessionEvent::Stalled { frame, waiting_for });
             return Ok(AdvanceOutcome::Stalled { frame, waiting_for });
         }
 
         let predicted = confirmed.is_none();
         self.step(OutputMode::Present)?;
         self.stats.frames_presented += 1;
-        self.events.push(SessionEvent::Advanced { frame, predicted });
+        self.events
+            .push(SessionEvent::Advanced { frame, predicted });
         // Advancing may have made a parked checksum comparable.
         self.settle_peer_checksums()?;
         Ok(AdvanceOutcome::Advanced { frame, predicted })
@@ -347,10 +353,10 @@ impl<S: Simulation> RollbackSession<S> {
         };
 
         // Record the guess before it is consumed, so `reconcile` can audit it.
-        let entry = self
-            .used_remote
-            .entry(frame)
-            .or_insert(UsedInput { input: remote, was_predicted: false });
+        let entry = self.used_remote.entry(frame).or_insert(UsedInput {
+            input: remote,
+            was_predicted: false,
+        });
         entry.input = remote;
         if is_prediction && !entry.was_predicted {
             entry.was_predicted = true;
@@ -697,7 +703,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(s.stats().rollbacks, 1);
-        assert_eq!(s.stats().last_rollback_depth, 2, "rolled back frames 3 and 4");
+        assert_eq!(
+            s.stats().last_rollback_depth,
+            2,
+            "rolled back frames 3 and 4"
+        );
         assert_eq!(s.current_frame(), 5, "and caught back up to the present");
     }
 
@@ -712,7 +722,13 @@ mod tests {
 
         // Guessed neutral throughout; reality alternates, diverging repeatedly.
         let actual: Vec<PlayerInput> = (1..10)
-            .map(|f| if f % 2 == 0 { PlayerInput(0x20) } else { PlayerInput::NEUTRAL })
+            .map(|f| {
+                if f % 2 == 0 {
+                    PlayerInput(0x20)
+                } else {
+                    PlayerInput::NEUTRAL
+                }
+            })
             .collect();
         s.add_remote_inputs(1, &actual).unwrap();
 
@@ -752,10 +768,16 @@ mod tests {
         }
         // Flush the tail so the last few speculated frames get corrected too.
         ragged
-            .add_remote_inputs(delivered_through + 1, &remote[delivered_through as usize..40])
+            .add_remote_inputs(
+                delivered_through + 1,
+                &remote[delivered_through as usize..40],
+            )
             .unwrap();
 
-        assert!(ragged.stats().rollbacks > 0, "the ragged run must have rolled back");
+        assert!(
+            ragged.stats().rollbacks > 0,
+            "the ragged run must have rolled back"
+        );
         assert_eq!(
             clean.simulation().checksum(),
             ragged.simulation().checksum(),
@@ -839,7 +861,9 @@ mod tests {
         // Now the same situation with a hole: a fresh session that only ever
         // hears about frames 30..37.
         let mut holed = session(config);
-        holed.add_remote_inputs(30, &[PlayerInput(0x22); 8]).unwrap();
+        holed
+            .add_remote_inputs(30, &[PlayerInput(0x22); 8])
+            .unwrap();
         for _ in 0..60 {
             if holed.would_stall() {
                 break;
@@ -880,7 +904,10 @@ mod tests {
         let first = s.confirmed_checksums();
         let frames: Vec<Frame> = first.iter().map(|&(f, _)| f).collect();
         assert_eq!(frames, vec![0, 4, 8]);
-        assert!(s.confirmed_checksums().is_empty(), "no frame is emitted twice");
+        assert!(
+            s.confirmed_checksums().is_empty(),
+            "no frame is emitted twice"
+        );
     }
 
     #[test]
@@ -1010,7 +1037,11 @@ mod tests {
         let mut s = session(SessionConfig::default());
         drive(&mut s, 12, PlayerInput(0x05));
         let batch = s.local_inputs_since(s.local_queued_through() - 7, 8);
-        assert_eq!(batch.len(), 8, "the wire format repeats the last eight inputs");
+        assert_eq!(
+            batch.len(),
+            8,
+            "the wire format repeats the last eight inputs"
+        );
         assert!(batch.windows(2).all(|w| w[1].0 == w[0].0 + 1));
     }
 }

@@ -47,7 +47,11 @@ fn main() -> Result<()> {
     std::fs::write(&html_path, html::render(&sessions, &now_iso8601()))
         .with_context(|| format!("writing {}", html_path.display()))?;
 
-    println!("{} sessão(ões) lidas de {}", sessions.len(), args.logs.display());
+    println!(
+        "{} sessão(ões) lidas de {}",
+        sessions.len(),
+        args.logs.display()
+    );
     println!("  {}", csv_path.display());
     println!("  {}", html_path.display());
 

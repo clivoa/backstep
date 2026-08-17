@@ -127,11 +127,7 @@ impl UdpTransport {
         let sequence = self.next_sequence;
         self.next_sequence = self.next_sequence.wrapping_add(1);
 
-        let body = Packet {
-            sequence,
-            message,
-        }
-        .encode_unsigned()?;
+        let body = Packet { sequence, message }.encode_unsigned()?;
         let datagram = self.auth.seal(body);
         debug_assert!(datagram.len() <= MAX_DATAGRAM);
 
@@ -324,7 +320,8 @@ mod tests {
     fn a_datagram_signed_with_the_wrong_key_is_counted_and_dropped() {
         let profile = NetworkProfile::NATURAL;
         let mut victim =
-            UdpTransport::bind(loopback(), Authenticator::from_passphrase("real"), profile).unwrap();
+            UdpTransport::bind(loopback(), Authenticator::from_passphrase("real"), profile)
+                .unwrap();
         let mut attacker = UdpTransport::bind(
             loopback(),
             Authenticator::from_passphrase("guessed"),
@@ -336,7 +333,10 @@ mod tests {
 
         let deadline = Instant::now() + std::time::Duration::from_secs(2);
         while victim.stats().auth_failures == 0 && Instant::now() < deadline {
-            assert!(victim.receive().unwrap().is_empty(), "must not be delivered");
+            assert!(
+                victim.receive().unwrap().is_empty(),
+                "must not be delivered"
+            );
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert_eq!(victim.stats().auth_failures, 1);
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn garbage_that_is_not_even_a_datagram_is_counted_as_an_auth_failure() {
-        let (mut a, mut b) = pair(NetworkProfile::NATURAL);
+        let (a, mut b) = pair(NetworkProfile::NATURAL);
         let junk = [0xFFu8; 64];
         a.socket.send_to(&junk, b.local_addr().unwrap()).unwrap();
 
@@ -366,8 +366,7 @@ mod tests {
         let auth = Authenticator::from_passphrase("test");
         let mut server =
             UdpTransport::bind(loopback(), auth.clone(), NetworkProfile::NATURAL).unwrap();
-        let mut client =
-            UdpTransport::bind(loopback(), auth, NetworkProfile::NATURAL).unwrap();
+        let mut client = UdpTransport::bind(loopback(), auth, NetworkProfile::NATURAL).unwrap();
         client.set_peer(server.local_addr().unwrap());
         assert!(server.peer().is_none());
 

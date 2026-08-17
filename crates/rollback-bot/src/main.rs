@@ -20,9 +20,7 @@ use rollback_core::{
 };
 use rollback_libretro::{LibretroCore, LibretroSimulation, Sfa3Bot, Sfa3Director};
 use rollback_net::{Authenticator, UdpTransport, DEFAULT_PORT};
-use rollback_runner::{
-    app, handshake, Role, RunnerConfig, SessionRunner, StepOutcome,
-};
+use rollback_runner::{app, handshake, Role, RunnerConfig, SessionRunner, StepOutcome};
 use rollback_telemetry::SessionInfo;
 
 #[derive(Parser, Debug)]
@@ -106,14 +104,13 @@ fn main() -> Result<()> {
         other => bail!("unknown player '{other}' (expected p1|p2)"),
     };
 
-    let (profile_name, profile) = NetworkProfile::named(&args.profile)
-        .with_context(|| {
-            format!(
-                "unknown profile '{}' (expected one of {})",
-                args.profile,
-                NetworkProfile::NAMES.join(", ")
-            )
-        })?;
+    let (profile_name, profile) = NetworkProfile::named(&args.profile).with_context(|| {
+        format!(
+            "unknown profile '{}' (expected one of {})",
+            args.profile,
+            NetworkProfile::NAMES.join(", ")
+        )
+    })?;
 
     let config = SessionConfig {
         simulation: args.sim,
@@ -157,15 +154,27 @@ fn main() -> Result<()> {
     );
     eprintln!("waiting for the peer (handshake timeout 120 s)...");
 
-    let remote =
-        handshake(&mut transport, role, local_identity, Duration::from_secs(120))
-            .context("handshake failed")?;
+    let remote = handshake(
+        &mut transport,
+        role,
+        local_identity,
+        Duration::from_secs(120),
+    )
+    .context("handshake failed")?;
     eprintln!(
         "connected: {}",
         rollback_runner::handshake::describe(&local_identity, &remote)
     );
 
-    let mut info = SessionInfo::new(args.sim, profile_name, if player == PlayerHandle::P1 { "p1" } else { "p2" });
+    let mut info = SessionInfo::new(
+        args.sim,
+        profile_name,
+        if player == PlayerHandle::P1 {
+            "p1"
+        } else {
+            "p2"
+        },
+    );
     info.app_commit = app::APP_COMMIT.to_string();
     info.core_sha256 = app::digest_hex(&core_hash);
     info.rom_sha256 = app::digest_hex(&rom_hash);
@@ -193,7 +202,9 @@ fn main() -> Result<()> {
         SimulationKind::Arena => {
             let mut bot = ArenaBot::new(player.index(), config.seed);
             let runner = SessionRunner::new(Arena::new(), transport, runner_config)?;
-            session_loop(runner, frame_budget, move |arena: &Arena, _frame| bot.decide(arena))
+            session_loop(runner, frame_budget, move |arena: &Arena, _frame| {
+                bot.decide(arena)
+            })
         }
         SimulationKind::Sfa3 => {
             let core_path = args.core.context("--core is required for --sim sfa3")?;
@@ -216,23 +227,24 @@ fn main() -> Result<()> {
                 core.state_size()
             );
 
-            let runner = SessionRunner::new(
-                LibretroSimulation::new(core),
-                transport,
-                runner_config,
-            )?;
+            let runner =
+                SessionRunner::new(LibretroSimulation::new(core), transport, runner_config)?;
             let director = Sfa3Director::new();
             let mut bot = Sfa3Bot::new(config.seed);
             let slot = player.index();
-            session_loop(runner, frame_budget, move |_sim: &LibretroSimulation, frame| {
-                // The boot script owns both players until the match starts, so
-                // a stray input cannot change the character selection on one
-                // peer only.
-                match director.input(frame, slot) {
-                    Some(scripted) => scripted,
-                    None => bot.decide(),
-                }
-            })
+            session_loop(
+                runner,
+                frame_budget,
+                move |_sim: &LibretroSimulation, frame| {
+                    // The boot script owns both players until the match starts, so
+                    // a stray input cannot change the character selection on one
+                    // peer only.
+                    match director.input(frame, slot) {
+                        Some(scripted) => scripted,
+                        None => bot.decide(),
+                    }
+                },
+            )
         }
     }
 }
@@ -243,7 +255,11 @@ fn main() -> Result<()> {
 /// simulated, and returns this peer's input for it. The arena bot uses the
 /// state; the SFA3 bot cannot see the state at all (no ROM offsets -- see the
 /// module docs in `rollback_libretro::sfa3`) and ignores it.
-fn session_loop<S, F>(mut runner: SessionRunner<S>, frame_budget: u64, mut next_input: F) -> Result<()>
+fn session_loop<S, F>(
+    mut runner: SessionRunner<S>,
+    frame_budget: u64,
+    mut next_input: F,
+) -> Result<()>
 where
     S: Simulation,
     F: FnMut(&S, u32) -> PlayerInput,

@@ -155,35 +155,125 @@ fn overview(sessions: &[Session]) -> String {
     out
 }
 
+/// A labelled row of the peer table: a heading and how to render one peer's cell.
+type PeerRow = (&'static str, Box<dyn Fn(&SessionSummary) -> String>);
+
 /// The two peers of one run, side by side.
 fn peer_table(group: &[&Session]) -> String {
-    let rows: Vec<(&str, Box<dyn Fn(&SessionSummary) -> String>)> = vec![
+    let rows: Vec<PeerRow> = vec![
         ("Sessão", Box::new(|s: &SessionSummary| escape(&s.name))),
-        ("Commit", Box::new(|s: &SessionSummary| escape(&s.commit[..s.commit.len().min(12)]))),
-        ("Duração", Box::new(|s: &SessionSummary| format!("{:.1} s", s.duration_s))),
-        ("Frames apresentados", Box::new(|s: &SessionSummary| s.frames_presented.to_string())),
-        ("FPS efetivo", Box::new(|s: &SessionSummary| format!("{:.2}", s.effective_fps()))),
-        ("Frames re-simulados", Box::new(|s: &SessionSummary| s.frames_resimulated.to_string())),
-        ("Trabalho extra", Box::new(|s: &SessionSummary| format!("{:.1}%", s.resimulation_overhead() * 100.0))),
-        ("Rollbacks", Box::new(|s: &SessionSummary| s.rollbacks.to_string())),
-        ("Profundidade média", Box::new(|s: &SessionSummary| format!("{:.2}", s.mean_rollback_depth()))),
-        ("Profundidade máxima", Box::new(|s: &SessionSummary| s.max_rollback_depth.to_string())),
-        ("Frames previstos", Box::new(|s: &SessionSummary| s.predicted_frames.to_string())),
-        ("Previsões erradas", Box::new(|s: &SessionSummary| s.mispredicted_frames.to_string())),
-        ("Acurácia da previsão", Box::new(|s: &SessionSummary| format!("{:.2}%", s.prediction_accuracy() * 100.0))),
-        ("Stalls", Box::new(|s: &SessionSummary| s.stalls.to_string())),
-        ("Checksums comparados", Box::new(|s: &SessionSummary| s.checksums_compared.to_string())),
-        ("Tamanho do estado", Box::new(|s: &SessionSummary| format!("{} B", s.state_bytes))),
-        ("RTT suavizado", Box::new(|s: &SessionSummary| format!("{:.1} ms", s.srtt_ms))),
-        ("Variação do RTT", Box::new(|s: &SessionSummary| format!("{:.1} ms", s.rttvar_ms))),
-        ("Perda inferida", Box::new(|s: &SessionSummary| format!("{:.2}%", s.loss_ratio * 100.0))),
-        ("Duplicados", Box::new(|s: &SessionSummary| s.duplicates.to_string())),
-        ("Reordenados", Box::new(|s: &SessionSummary| s.reordered.to_string())),
-        ("Bitrate de envio", Box::new(|s: &SessionSummary| format!("{:.1} kbit/s", s.send_bitrate() / 1000.0))),
-        ("CPU", Box::new(|s: &SessionSummary| format!("{:.1} s", s.cpu_seconds))),
-        ("Memória residente", Box::new(|s: &SessionSummary| format!("{:.0} MB", s.resident_bytes as f64 / 1048576.0))),
-        ("Log completo", Box::new(|s: &SessionSummary| if s.complete { "sim".into() } else { "NÃO".into() })),
-        ("Desync", Box::new(|s: &SessionSummary| if s.desync { "SIM".into() } else { "não".into() })),
+        (
+            "Commit",
+            Box::new(|s: &SessionSummary| escape(&s.commit[..s.commit.len().min(12)])),
+        ),
+        (
+            "Duração",
+            Box::new(|s: &SessionSummary| format!("{:.1} s", s.duration_s)),
+        ),
+        (
+            "Frames apresentados",
+            Box::new(|s: &SessionSummary| s.frames_presented.to_string()),
+        ),
+        (
+            "FPS efetivo",
+            Box::new(|s: &SessionSummary| format!("{:.2}", s.effective_fps())),
+        ),
+        (
+            "Frames re-simulados",
+            Box::new(|s: &SessionSummary| s.frames_resimulated.to_string()),
+        ),
+        (
+            "Trabalho extra",
+            Box::new(|s: &SessionSummary| format!("{:.1}%", s.resimulation_overhead() * 100.0)),
+        ),
+        (
+            "Rollbacks",
+            Box::new(|s: &SessionSummary| s.rollbacks.to_string()),
+        ),
+        (
+            "Profundidade média",
+            Box::new(|s: &SessionSummary| format!("{:.2}", s.mean_rollback_depth())),
+        ),
+        (
+            "Profundidade máxima",
+            Box::new(|s: &SessionSummary| s.max_rollback_depth.to_string()),
+        ),
+        (
+            "Frames previstos",
+            Box::new(|s: &SessionSummary| s.predicted_frames.to_string()),
+        ),
+        (
+            "Previsões erradas",
+            Box::new(|s: &SessionSummary| s.mispredicted_frames.to_string()),
+        ),
+        (
+            "Acurácia da previsão",
+            Box::new(|s: &SessionSummary| format!("{:.2}%", s.prediction_accuracy() * 100.0)),
+        ),
+        (
+            "Stalls",
+            Box::new(|s: &SessionSummary| s.stalls.to_string()),
+        ),
+        (
+            "Checksums comparados",
+            Box::new(|s: &SessionSummary| s.checksums_compared.to_string()),
+        ),
+        (
+            "Tamanho do estado",
+            Box::new(|s: &SessionSummary| format!("{} B", s.state_bytes)),
+        ),
+        (
+            "RTT suavizado",
+            Box::new(|s: &SessionSummary| format!("{:.1} ms", s.srtt_ms)),
+        ),
+        (
+            "Variação do RTT",
+            Box::new(|s: &SessionSummary| format!("{:.1} ms", s.rttvar_ms)),
+        ),
+        (
+            "Perda inferida",
+            Box::new(|s: &SessionSummary| format!("{:.2}%", s.loss_ratio * 100.0)),
+        ),
+        (
+            "Duplicados",
+            Box::new(|s: &SessionSummary| s.duplicates.to_string()),
+        ),
+        (
+            "Reordenados",
+            Box::new(|s: &SessionSummary| s.reordered.to_string()),
+        ),
+        (
+            "Bitrate de envio",
+            Box::new(|s: &SessionSummary| format!("{:.1} kbit/s", s.send_bitrate() / 1000.0)),
+        ),
+        (
+            "CPU",
+            Box::new(|s: &SessionSummary| format!("{:.1} s", s.cpu_seconds)),
+        ),
+        (
+            "Memória residente",
+            Box::new(|s: &SessionSummary| format!("{:.0} MB", s.resident_bytes as f64 / 1048576.0)),
+        ),
+        (
+            "Log completo",
+            Box::new(|s: &SessionSummary| {
+                if s.complete {
+                    "sim".into()
+                } else {
+                    "NÃO".into()
+                }
+            }),
+        ),
+        (
+            "Desync",
+            Box::new(|s: &SessionSummary| {
+                if s.desync {
+                    "SIM".into()
+                } else {
+                    "não".into()
+                }
+            }),
+        ),
     ];
 
     let mut out = String::from("<table class=\"peers\">\n<tr><th>Métrica</th>");
@@ -401,7 +491,10 @@ mod tests {
     #[test]
     fn both_peers_appear_in_one_table() {
         let html = render(
-            &[session("p1", "combined", false), session("p2", "combined", false)],
+            &[
+                session("p1", "combined", false),
+                session("p2", "combined", false),
+            ],
             "now",
         );
         assert!(html.contains("<th>p1</th>"));

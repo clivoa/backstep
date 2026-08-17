@@ -602,11 +602,17 @@ mod tests {
         .encode_unsigned()
         .unwrap();
 
-        assert!(matches!(Packet::decode(&good[..4]), Err(WireError::TooShort(4))));
+        assert!(matches!(
+            Packet::decode(&good[..4]),
+            Err(WireError::TooShort(4))
+        ));
 
         let mut wrong_magic = good.clone();
         wrong_magic[0] = b'X';
-        assert!(matches!(Packet::decode(&wrong_magic), Err(WireError::BadMagic)));
+        assert!(matches!(
+            Packet::decode(&wrong_magic),
+            Err(WireError::BadMagic)
+        ));
 
         let mut wrong_version = good.clone();
         wrong_version[2] = 99;
@@ -657,7 +663,10 @@ mod tests {
         bytes[last] = 200;
         assert!(matches!(
             Packet::decode(&bytes),
-            Err(WireError::BadEnum { field: "disconnect", value: 200 })
+            Err(WireError::BadEnum {
+                field: "disconnect",
+                value: 200
+            })
         ));
     }
 
@@ -690,7 +699,13 @@ mod tests {
                 },
                 Incompatibility::AppCommit,
             ),
-            (PeerIdentity { config_hash: 0, ..b }, Incompatibility::Config),
+            (
+                PeerIdentity {
+                    config_hash: 0,
+                    ..b
+                },
+                Incompatibility::Config,
+            ),
             (PeerIdentity { seed: 0, ..b }, Incompatibility::Seed),
             (
                 PeerIdentity {

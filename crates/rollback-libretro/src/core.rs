@@ -133,23 +133,93 @@ impl LibretroCore {
         let api = CoreApi {
             init: symbol!(lib, path, "retro_init", unsafe extern "C" fn()),
             deinit: symbol!(lib, path, "retro_deinit", unsafe extern "C" fn()),
-            api_version: symbol!(lib, path, "retro_api_version", unsafe extern "C" fn() -> c_uint),
-            get_system_info: symbol!(lib, path, "retro_get_system_info", unsafe extern "C" fn(*mut retro_system_info)),
-            get_system_av_info: symbol!(lib, path, "retro_get_system_av_info", unsafe extern "C" fn(*mut retro_system_av_info)),
-            set_environment: symbol!(lib, path, "retro_set_environment", unsafe extern "C" fn(retro_environment_t)),
-            set_video_refresh: symbol!(lib, path, "retro_set_video_refresh", unsafe extern "C" fn(retro_video_refresh_t)),
-            set_audio_sample: symbol!(lib, path, "retro_set_audio_sample", unsafe extern "C" fn(retro_audio_sample_t)),
-            set_audio_sample_batch: symbol!(lib, path, "retro_set_audio_sample_batch", unsafe extern "C" fn(retro_audio_sample_batch_t)),
-            set_input_poll: symbol!(lib, path, "retro_set_input_poll", unsafe extern "C" fn(retro_input_poll_t)),
-            set_input_state: symbol!(lib, path, "retro_set_input_state", unsafe extern "C" fn(retro_input_state_t)),
-            set_controller_port_device: symbol!(lib, path, "retro_set_controller_port_device", unsafe extern "C" fn(c_uint, c_uint)),
-            load_game: symbol!(lib, path, "retro_load_game", unsafe extern "C" fn(*const retro_game_info) -> bool),
+            api_version: symbol!(
+                lib,
+                path,
+                "retro_api_version",
+                unsafe extern "C" fn() -> c_uint
+            ),
+            get_system_info: symbol!(
+                lib,
+                path,
+                "retro_get_system_info",
+                unsafe extern "C" fn(*mut retro_system_info)
+            ),
+            get_system_av_info: symbol!(
+                lib,
+                path,
+                "retro_get_system_av_info",
+                unsafe extern "C" fn(*mut retro_system_av_info)
+            ),
+            set_environment: symbol!(
+                lib,
+                path,
+                "retro_set_environment",
+                unsafe extern "C" fn(retro_environment_t)
+            ),
+            set_video_refresh: symbol!(
+                lib,
+                path,
+                "retro_set_video_refresh",
+                unsafe extern "C" fn(retro_video_refresh_t)
+            ),
+            set_audio_sample: symbol!(
+                lib,
+                path,
+                "retro_set_audio_sample",
+                unsafe extern "C" fn(retro_audio_sample_t)
+            ),
+            set_audio_sample_batch: symbol!(
+                lib,
+                path,
+                "retro_set_audio_sample_batch",
+                unsafe extern "C" fn(retro_audio_sample_batch_t)
+            ),
+            set_input_poll: symbol!(
+                lib,
+                path,
+                "retro_set_input_poll",
+                unsafe extern "C" fn(retro_input_poll_t)
+            ),
+            set_input_state: symbol!(
+                lib,
+                path,
+                "retro_set_input_state",
+                unsafe extern "C" fn(retro_input_state_t)
+            ),
+            set_controller_port_device: symbol!(
+                lib,
+                path,
+                "retro_set_controller_port_device",
+                unsafe extern "C" fn(c_uint, c_uint)
+            ),
+            load_game: symbol!(
+                lib,
+                path,
+                "retro_load_game",
+                unsafe extern "C" fn(*const retro_game_info) -> bool
+            ),
             unload_game: symbol!(lib, path, "retro_unload_game", unsafe extern "C" fn()),
             run: symbol!(lib, path, "retro_run", unsafe extern "C" fn()),
             reset: symbol!(lib, path, "retro_reset", unsafe extern "C" fn()),
-            serialize_size: symbol!(lib, path, "retro_serialize_size", unsafe extern "C" fn() -> usize),
-            serialize: symbol!(lib, path, "retro_serialize", unsafe extern "C" fn(*mut c_void, usize) -> bool),
-            unserialize: symbol!(lib, path, "retro_unserialize", unsafe extern "C" fn(*const c_void, usize) -> bool),
+            serialize_size: symbol!(
+                lib,
+                path,
+                "retro_serialize_size",
+                unsafe extern "C" fn() -> usize
+            ),
+            serialize: symbol!(
+                lib,
+                path,
+                "retro_serialize",
+                unsafe extern "C" fn(*mut c_void, usize) -> bool
+            ),
+            unserialize: symbol!(
+                lib,
+                path,
+                "retro_unserialize",
+                unsafe extern "C" fn(*const c_void, usize) -> bool
+            ),
             _lib: lib,
         };
 
@@ -457,9 +527,7 @@ impl Simulation for LibretroSimulation {
             });
         }
         // SAFETY: `data` is exactly the size the core reported.
-        let ok = unsafe {
-            (self.core.api.unserialize)(data.as_ptr() as *const c_void, data.len())
-        };
+        let ok = unsafe { (self.core.api.unserialize)(data.as_ptr() as *const c_void, data.len()) };
         if !ok {
             return Err(SimulationError::Backend(
                 CoreError::UnserializeFailed(data.len()).to_string(),
@@ -490,7 +558,9 @@ impl Simulation for LibretroSimulation {
             return checksum;
         }
         self.snapshot();
-        self.cached_checksum.get().expect("snapshot fills the cache")
+        self.cached_checksum
+            .get()
+            .expect("snapshot fills the cache")
     }
 }
 

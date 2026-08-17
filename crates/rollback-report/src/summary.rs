@@ -166,7 +166,11 @@ mod tests {
         let rows = parse_rows(&csv);
         assert_eq!(rows[0].len(), COLUMNS.len());
         for row in &rows[1..] {
-            assert_eq!(row.len(), COLUMNS.len(), "row width differs from the header");
+            assert_eq!(
+                row.len(),
+                COLUMNS.len(),
+                "row width differs from the header"
+            );
         }
         assert_eq!(rows.len(), 3);
     }

@@ -138,72 +138,415 @@ pub fn render(s: &MetricsSnapshot) -> String {
         info.state_history,
     ));
 
-    gauge(&mut out, "rollback_elapsed_seconds", "Session wall time.", s.elapsed_ms as f64 / 1000.0);
-    gauge(&mut out, "rollback_current_frame", "Next frame to simulate.", f64::from(s.frame));
-    gauge(&mut out, "rollback_confirmed_frame", "Highest frame with both inputs known.", f64::from(s.confirmed_frame));
-    gauge(&mut out, "rollback_prediction_depth", "Frames currently speculated ahead of the peer.", f64::from(s.prediction_depth));
-    gauge(&mut out, "rollback_desync", "1 if a confirmed checksum mismatched.", u8::from(s.desync).into());
+    gauge(
+        &mut out,
+        "rollback_elapsed_seconds",
+        "Session wall time.",
+        s.elapsed_ms as f64 / 1000.0,
+    );
+    gauge(
+        &mut out,
+        "rollback_current_frame",
+        "Next frame to simulate.",
+        f64::from(s.frame),
+    );
+    gauge(
+        &mut out,
+        "rollback_confirmed_frame",
+        "Highest frame with both inputs known.",
+        f64::from(s.confirmed_frame),
+    );
+    gauge(
+        &mut out,
+        "rollback_prediction_depth",
+        "Frames currently speculated ahead of the peer.",
+        f64::from(s.prediction_depth),
+    );
+    gauge(
+        &mut out,
+        "rollback_desync",
+        "1 if a confirmed checksum mismatched.",
+        u8::from(s.desync).into(),
+    );
 
     // --- per-peer session counters ---
     let local = &s.local;
-    counter_peer(&mut out, "rollback_frames_presented_total", "Frames shown to the player.", "local", local.frames_presented as f64, true);
-    counter_peer(&mut out, "rollback_frames_resimulated_total", "Frames replayed during rollbacks.", "local", local.frames_resimulated as f64, true);
-    counter_peer(&mut out, "rollback_rollbacks_total", "Rollbacks performed.", "local", local.rollbacks as f64, true);
-    counter_peer(&mut out, "rollback_predicted_frames_total", "Frames first simulated on a guess.", "local", local.predicted_frames as f64, true);
-    counter_peer(&mut out, "rollback_mispredicted_frames_total", "Guesses that turned out wrong.", "local", local.mispredicted_frames as f64, true);
-    counter_peer(&mut out, "rollback_stalls_total", "Times the prediction window filled up.", "local", local.stalls as f64, true);
-    counter_peer(&mut out, "rollback_checksums_compared_total", "Confirmed-frame checksums compared.", "local", local.checksums_compared as f64, true);
-    gauge_peer(&mut out, "rollback_max_depth_frames", "Deepest rollback so far.", "local", f64::from(local.max_rollback_depth), true);
-    gauge_peer(&mut out, "rollback_prediction_accuracy", "Fraction of guesses that held up.", "local", local.prediction_accuracy(), true);
-    gauge_peer(&mut out, "rollback_state_bytes", "Size of the most recent saved state.", "local", local.state_bytes_last as f64, true);
+    counter_peer(
+        &mut out,
+        "rollback_frames_presented_total",
+        "Frames shown to the player.",
+        "local",
+        local.frames_presented as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_frames_resimulated_total",
+        "Frames replayed during rollbacks.",
+        "local",
+        local.frames_resimulated as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_rollbacks_total",
+        "Rollbacks performed.",
+        "local",
+        local.rollbacks as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_predicted_frames_total",
+        "Frames first simulated on a guess.",
+        "local",
+        local.predicted_frames as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_mispredicted_frames_total",
+        "Guesses that turned out wrong.",
+        "local",
+        local.mispredicted_frames as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_stalls_total",
+        "Times the prediction window filled up.",
+        "local",
+        local.stalls as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_checksums_compared_total",
+        "Confirmed-frame checksums compared.",
+        "local",
+        local.checksums_compared as f64,
+        true,
+    );
+    gauge_peer(
+        &mut out,
+        "rollback_max_depth_frames",
+        "Deepest rollback so far.",
+        "local",
+        f64::from(local.max_rollback_depth),
+        true,
+    );
+    gauge_peer(
+        &mut out,
+        "rollback_prediction_accuracy",
+        "Fraction of guesses that held up.",
+        "local",
+        local.prediction_accuracy(),
+        true,
+    );
+    gauge_peer(
+        &mut out,
+        "rollback_state_bytes",
+        "Size of the most recent saved state.",
+        "local",
+        local.state_bytes_last as f64,
+        true,
+    );
 
     // --- link ---
     let link = &s.link;
-    gauge_peer(&mut out, "rollback_srtt_seconds", "Smoothed round-trip time.", "local", link.srtt_ms() / 1000.0, true);
-    gauge_peer(&mut out, "rollback_rttvar_seconds", "Round-trip time variation.", "local", link.rttvar_ms() / 1000.0, true);
-    gauge_peer(&mut out, "rollback_loss_ratio", "Inferred inbound datagram loss.", "local", link.loss_ratio(), true);
-    counter_peer(&mut out, "rollback_packets_sent_total", "Datagrams sent.", "local", link.packets_sent as f64, true);
-    counter_peer(&mut out, "rollback_packets_received_total", "Datagrams received and authenticated.", "local", link.packets_received as f64, true);
-    counter_peer(&mut out, "rollback_bytes_sent_total", "Bytes sent.", "local", link.bytes_sent as f64, true);
-    counter_peer(&mut out, "rollback_bytes_received_total", "Bytes received.", "local", link.bytes_received as f64, true);
-    counter_peer(&mut out, "rollback_inferred_lost_total", "Datagrams the peer sent that never arrived.", "local", link.inferred_lost() as f64, true);
-    counter_peer(&mut out, "rollback_duplicates_total", "Duplicate datagrams received.", "local", link.duplicates_received as f64, true);
-    counter_peer(&mut out, "rollback_reordered_total", "Out-of-order datagrams received.", "local", link.reordered_received as f64, true);
-    counter(&mut out, "rollback_auth_failures_total", "Datagrams that failed the HMAC check.", link.auth_failures as f64);
-    counter(&mut out, "rollback_malformed_total", "Datagrams that authenticated but did not parse.", link.malformed as f64);
-    gauge(&mut out, "rollback_send_bitrate_bps", "Outbound bitrate.", link.send_bitrate(s.elapsed_ms));
-    gauge(&mut out, "rollback_receive_bitrate_bps", "Inbound bitrate.", link.receive_bitrate(s.elapsed_ms));
+    gauge_peer(
+        &mut out,
+        "rollback_srtt_seconds",
+        "Smoothed round-trip time.",
+        "local",
+        link.srtt_ms() / 1000.0,
+        true,
+    );
+    gauge_peer(
+        &mut out,
+        "rollback_rttvar_seconds",
+        "Round-trip time variation.",
+        "local",
+        link.rttvar_ms() / 1000.0,
+        true,
+    );
+    gauge_peer(
+        &mut out,
+        "rollback_loss_ratio",
+        "Inferred inbound datagram loss.",
+        "local",
+        link.loss_ratio(),
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_packets_sent_total",
+        "Datagrams sent.",
+        "local",
+        link.packets_sent as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_packets_received_total",
+        "Datagrams received and authenticated.",
+        "local",
+        link.packets_received as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_bytes_sent_total",
+        "Bytes sent.",
+        "local",
+        link.bytes_sent as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_bytes_received_total",
+        "Bytes received.",
+        "local",
+        link.bytes_received as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_inferred_lost_total",
+        "Datagrams the peer sent that never arrived.",
+        "local",
+        link.inferred_lost() as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_duplicates_total",
+        "Duplicate datagrams received.",
+        "local",
+        link.duplicates_received as f64,
+        true,
+    );
+    counter_peer(
+        &mut out,
+        "rollback_reordered_total",
+        "Out-of-order datagrams received.",
+        "local",
+        link.reordered_received as f64,
+        true,
+    );
+    counter(
+        &mut out,
+        "rollback_auth_failures_total",
+        "Datagrams that failed the HMAC check.",
+        link.auth_failures as f64,
+    );
+    counter(
+        &mut out,
+        "rollback_malformed_total",
+        "Datagrams that authenticated but did not parse.",
+        link.malformed as f64,
+    );
+    gauge(
+        &mut out,
+        "rollback_send_bitrate_bps",
+        "Outbound bitrate.",
+        link.send_bitrate(s.elapsed_ms),
+    );
+    gauge(
+        &mut out,
+        "rollback_receive_bitrate_bps",
+        "Inbound bitrate.",
+        link.receive_bitrate(s.elapsed_ms),
+    );
 
     // --- timings ---
-    counter(&mut out, "rollback_advance_seconds_total", "Time inside advance_frame.", local.advance_nanos as f64 / 1e9);
-    counter(&mut out, "rollback_save_state_seconds_total", "Time inside save_state.", local.save_state_nanos as f64 / 1e9);
-    counter(&mut out, "rollback_load_state_seconds_total", "Time inside load_state.", local.load_state_nanos as f64 / 1e9);
+    counter(
+        &mut out,
+        "rollback_advance_seconds_total",
+        "Time inside advance_frame.",
+        local.advance_nanos as f64 / 1e9,
+    );
+    counter(
+        &mut out,
+        "rollback_save_state_seconds_total",
+        "Time inside save_state.",
+        local.save_state_nanos as f64 / 1e9,
+    );
+    counter(
+        &mut out,
+        "rollback_load_state_seconds_total",
+        "Time inside load_state.",
+        local.load_state_nanos as f64 / 1e9,
+    );
 
     // --- process ---
-    counter(&mut out, "process_cpu_seconds_total", "Process CPU time.", s.process.cpu_seconds);
-    gauge(&mut out, "process_resident_memory_bytes", "Process resident set size.", s.process.resident_bytes as f64);
+    counter(
+        &mut out,
+        "process_cpu_seconds_total",
+        "Process CPU time.",
+        s.process.cpu_seconds,
+    );
+    gauge(
+        &mut out,
+        "process_resident_memory_bytes",
+        "Process resident set size.",
+        s.process.resident_bytes as f64,
+    );
 
     // --- the peer's own view, as it last reported it ---
     if let Some(r) = &s.remote {
-        counter_peer(&mut out, "rollback_frames_presented_total", "", "remote", r.frames_presented as f64, false);
-        counter_peer(&mut out, "rollback_frames_resimulated_total", "", "remote", r.frames_resimulated as f64, false);
-        counter_peer(&mut out, "rollback_rollbacks_total", "", "remote", r.rollbacks as f64, false);
-        counter_peer(&mut out, "rollback_predicted_frames_total", "", "remote", r.predicted_frames as f64, false);
-        counter_peer(&mut out, "rollback_mispredicted_frames_total", "", "remote", r.mispredicted_frames as f64, false);
-        counter_peer(&mut out, "rollback_stalls_total", "", "remote", r.stalls as f64, false);
-        counter_peer(&mut out, "rollback_checksums_compared_total", "", "remote", r.checksums_compared as f64, false);
-        gauge_peer(&mut out, "rollback_max_depth_frames", "", "remote", f64::from(r.max_rollback_depth), false);
-        gauge_peer(&mut out, "rollback_prediction_accuracy", "", "remote", accuracy(r.predicted_frames, r.mispredicted_frames), false);
-        gauge_peer(&mut out, "rollback_state_bytes", "", "remote", f64::from(r.state_bytes_last), false);
-        gauge_peer(&mut out, "rollback_srtt_seconds", "", "remote", f64::from(r.srtt_micros) / 1e6, false);
-        gauge_peer(&mut out, "rollback_rttvar_seconds", "", "remote", f64::from(r.rttvar_micros) / 1e6, false);
-        counter_peer(&mut out, "rollback_packets_sent_total", "", "remote", r.packets_sent as f64, false);
-        counter_peer(&mut out, "rollback_packets_received_total", "", "remote", r.packets_received as f64, false);
-        counter_peer(&mut out, "rollback_bytes_sent_total", "", "remote", r.bytes_sent as f64, false);
-        counter_peer(&mut out, "rollback_bytes_received_total", "", "remote", r.bytes_received as f64, false);
-        counter_peer(&mut out, "rollback_inferred_lost_total", "", "remote", r.inferred_lost as f64, false);
-        counter_peer(&mut out, "rollback_duplicates_total", "", "remote", r.duplicates as f64, false);
-        counter_peer(&mut out, "rollback_reordered_total", "", "remote", r.reordered as f64, false);
+        counter_peer(
+            &mut out,
+            "rollback_frames_presented_total",
+            "",
+            "remote",
+            r.frames_presented as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_frames_resimulated_total",
+            "",
+            "remote",
+            r.frames_resimulated as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_rollbacks_total",
+            "",
+            "remote",
+            r.rollbacks as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_predicted_frames_total",
+            "",
+            "remote",
+            r.predicted_frames as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_mispredicted_frames_total",
+            "",
+            "remote",
+            r.mispredicted_frames as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_stalls_total",
+            "",
+            "remote",
+            r.stalls as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_checksums_compared_total",
+            "",
+            "remote",
+            r.checksums_compared as f64,
+            false,
+        );
+        gauge_peer(
+            &mut out,
+            "rollback_max_depth_frames",
+            "",
+            "remote",
+            f64::from(r.max_rollback_depth),
+            false,
+        );
+        gauge_peer(
+            &mut out,
+            "rollback_prediction_accuracy",
+            "",
+            "remote",
+            accuracy(r.predicted_frames, r.mispredicted_frames),
+            false,
+        );
+        gauge_peer(
+            &mut out,
+            "rollback_state_bytes",
+            "",
+            "remote",
+            f64::from(r.state_bytes_last),
+            false,
+        );
+        gauge_peer(
+            &mut out,
+            "rollback_srtt_seconds",
+            "",
+            "remote",
+            f64::from(r.srtt_micros) / 1e6,
+            false,
+        );
+        gauge_peer(
+            &mut out,
+            "rollback_rttvar_seconds",
+            "",
+            "remote",
+            f64::from(r.rttvar_micros) / 1e6,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_packets_sent_total",
+            "",
+            "remote",
+            r.packets_sent as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_packets_received_total",
+            "",
+            "remote",
+            r.packets_received as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_bytes_sent_total",
+            "",
+            "remote",
+            r.bytes_sent as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_bytes_received_total",
+            "",
+            "remote",
+            r.bytes_received as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_inferred_lost_total",
+            "",
+            "remote",
+            r.inferred_lost as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_duplicates_total",
+            "",
+            "remote",
+            r.duplicates as f64,
+            false,
+        );
+        counter_peer(
+            &mut out,
+            "rollback_reordered_total",
+            "",
+            "remote",
+            r.reordered as f64,
+            false,
+        );
     }
 
     out
@@ -239,7 +582,14 @@ fn gauge_peer(out: &mut String, name: &str, help: &str, peer: &str, value: f64, 
     out.push_str(&format!("{name}{{peer=\"{peer}\"}} {}\n", number(value)));
 }
 
-fn counter_peer(out: &mut String, name: &str, help: &str, peer: &str, value: f64, emit_header: bool) {
+fn counter_peer(
+    out: &mut String,
+    name: &str,
+    help: &str,
+    peer: &str,
+    value: f64,
+    emit_header: bool,
+) {
     if emit_header {
         header(out, name, help, "counter");
     }
@@ -263,7 +613,9 @@ fn number(v: f64) -> String {
 
 /// Escape a label value: backslash, quote and newline, per the exposition spec.
 fn escape(v: &str) -> String {
-    v.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
+    v.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
 }
 
 #[cfg(test)]
@@ -300,7 +652,9 @@ mod tests {
                 );
                 continue;
             }
-            let (name, value) = line.rsplit_once(' ').unwrap_or_else(|| panic!("bad line: {line}"));
+            let (name, value) = line
+                .rsplit_once(' ')
+                .unwrap_or_else(|| panic!("bad line: {line}"));
             assert!(!name.is_empty(), "empty metric name in {line}");
             assert!(
                 value.parse::<f64>().is_ok() || ["NaN", "+Inf", "-Inf"].contains(&value),

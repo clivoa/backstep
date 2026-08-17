@@ -152,7 +152,12 @@ impl SessionLog {
     }
 
     /// Write the closing record and flush.
-    pub fn finish(mut self, t_ms: u64, reason: &str, snapshot: &MetricsSnapshot) -> std::io::Result<PathBuf> {
+    pub fn finish(
+        mut self,
+        t_ms: u64,
+        reason: &str,
+        snapshot: &MetricsSnapshot,
+    ) -> std::io::Result<PathBuf> {
         self.write(&Record::SessionEnd {
             t_ms,
             reason: reason.to_string(),
@@ -194,8 +199,15 @@ mod tests {
         log.write_events(
             33,
             &[
-                SessionEvent::Advanced { frame: 1, predicted: true },
-                SessionEvent::RolledBack { from: 5, to: 3, depth: 2 },
+                SessionEvent::Advanced {
+                    frame: 1,
+                    predicted: true,
+                },
+                SessionEvent::RolledBack {
+                    from: 5,
+                    to: 3,
+                    depth: 2,
+                },
             ],
         )
         .unwrap();
@@ -217,8 +229,15 @@ mod tests {
     fn session_events_keep_their_own_tag_when_flattened() {
         let dir = temp_dir("flatten");
         let mut log = SessionLog::create(&dir, "s", &snapshot().info).unwrap();
-        log.write_events(1, &[SessionEvent::Desync { frame: 60, local: 1, remote: 2 }])
-            .unwrap();
+        log.write_events(
+            1,
+            &[SessionEvent::Desync {
+                frame: 60,
+                local: 1,
+                remote: 2,
+            }],
+        )
+        .unwrap();
         let path = log.finish(2, "desync", &snapshot()).unwrap();
 
         let text = std::fs::read_to_string(&path).unwrap();

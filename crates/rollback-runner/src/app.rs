@@ -37,7 +37,12 @@ pub fn identity(
 }
 
 /// A filesystem-safe, sortable name for a session's log file.
-pub fn session_name(simulation: SimulationKind, profile: &str, player: PlayerHandle, mode: &str) -> String {
+pub fn session_name(
+    simulation: SimulationKind,
+    profile: &str,
+    player: PlayerHandle,
+    mode: &str,
+) -> String {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -124,7 +129,10 @@ mod tests {
         assert!(!APP_COMMIT.is_empty());
         let bytes = app_commit_bytes();
         assert_eq!(bytes.len(), 20);
-        assert_eq!(&bytes[..8], &APP_COMMIT.as_bytes()[..8.min(APP_COMMIT.len())]);
+        assert_eq!(
+            &bytes[..8],
+            &APP_COMMIT.as_bytes()[..8.min(APP_COMMIT.len())]
+        );
     }
 
     #[test]
@@ -137,7 +145,12 @@ mod tests {
 
     #[test]
     fn a_different_seed_makes_the_identities_incompatible() {
-        let p1 = identity(&SessionConfig::default(), PlayerHandle::P1, [0; 32], [0; 32]);
+        let p1 = identity(
+            &SessionConfig::default(),
+            PlayerHandle::P1,
+            [0; 32],
+            [0; 32],
+        );
         let p2 = identity(
             &SessionConfig {
                 seed: 999,
@@ -152,12 +165,18 @@ mod tests {
 
     #[test]
     fn session_names_are_filesystem_safe() {
-        let name = session_name(SimulationKind::Sfa3, "jitter 30/15", PlayerHandle::P2, "play");
+        let name = session_name(
+            SimulationKind::Sfa3,
+            "jitter 30/15",
+            PlayerHandle::P2,
+            "play",
+        );
         assert!(name.contains("sfa3"));
         assert!(name.contains("p2"));
         assert!(name.ends_with("play"));
         assert!(
-            name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            name.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
             "unsafe characters in {name}"
         );
     }

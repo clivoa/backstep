@@ -174,7 +174,10 @@ mod tests {
         let p = profile(NetworkProfile::named("delay20").unwrap().1, 1);
         let mut e = NetworkEmulator::new(p);
 
-        assert!(e.submit(1_000, vec![9]).is_empty(), "must not send immediately");
+        assert!(
+            e.submit(1_000, vec![9]).is_empty(),
+            "must not send immediately"
+        );
         assert!(e.drain_due(1_019).is_empty(), "still early");
         assert_eq!(e.drain_due(1_020), vec![vec![9]]);
         assert_eq!(e.in_flight(), 0);
@@ -194,7 +197,8 @@ mod tests {
             let now = i * 100;
             e2.submit(now, vec![0]);
             assert!(
-                e2.drain_due(now + u64::from(p.min_delay_ms()) - 1).is_empty(),
+                e2.drain_due(now + u64::from(p.min_delay_ms()) - 1)
+                    .is_empty(),
                 "delivered earlier than {} ms",
                 p.min_delay_ms()
             );

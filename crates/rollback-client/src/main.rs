@@ -170,7 +170,10 @@ fn main() -> Result<()> {
     let controllers = sdl.game_controller().map_err(anyhow::Error::msg)?;
     let window = video
         .window(
-            &format!("rollback-netcode :: {} :: {profile_name}", args.sim.as_str()),
+            &format!(
+                "rollback-netcode :: {} :: {profile_name}",
+                args.sim.as_str()
+            ),
             render::WINDOW_W,
             render::WINDOW_H,
         )

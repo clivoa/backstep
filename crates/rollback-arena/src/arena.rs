@@ -241,8 +241,8 @@ impl Arena {
         for i in 0..2 {
             self.tick_timers(i);
         }
-        for i in 0..2 {
-            self.apply_input(i, inputs[i]);
+        for (i, input) in inputs.into_iter().enumerate() {
+            self.apply_input(i, input);
         }
         for i in 0..2 {
             self.integrate(i);
@@ -334,7 +334,8 @@ impl Arena {
 
         // Horizontal movement. Left and Right pressed together cancel out,
         // which is what a real stick gate would enforce anyway.
-        let dir = i32::from(input.contains(Button::Right)) - i32::from(input.contains(Button::Left));
+        let dir =
+            i32::from(input.contains(Button::Right)) - i32::from(input.contains(Button::Left));
         if dir != 0 {
             let speed = if grounded { WALK_SPEED } else { AIR_DRIFT };
             f.x += dir * speed;
@@ -408,7 +409,12 @@ impl Arena {
 
         self.fighters[attacker].attack_connected = true;
         let blocked = self.fighters[defender].is_blocking_toward(ax);
-        self.apply_damage(defender, if blocked { CHIP_DAMAGE } else { ATTACK_DAMAGE }, blocked, facing);
+        self.apply_damage(
+            defender,
+            if blocked { CHIP_DAMAGE } else { ATTACK_DAMAGE },
+            blocked,
+            facing,
+        );
     }
 
     fn step_projectiles(&mut self) {
@@ -437,7 +443,11 @@ impl Arena {
 
             self.projectiles[slot].active = false;
             let blocked = self.fighters[target].is_blocking_toward(x);
-            let damage = if blocked { CHIP_DAMAGE } else { PROJECTILE_DAMAGE };
+            let damage = if blocked {
+                CHIP_DAMAGE
+            } else {
+                PROJECTILE_DAMAGE
+            };
             self.apply_damage(target, damage, blocked, fixed::signum(vx));
         }
     }
@@ -627,7 +637,12 @@ mod tests {
     #[test]
     fn state_round_trips_exactly() {
         let mut a = Arena::new();
-        run(&mut a, 120, press(&[Button::Right, Button::Attack]), press(&[Button::Special]));
+        run(
+            &mut a,
+            120,
+            press(&[Button::Right, Button::Attack]),
+            press(&[Button::Special]),
+        );
         let blob = a.save_state();
 
         let mut b = Arena::new();
@@ -688,7 +703,12 @@ mod tests {
         // Close the distance first, then swing.
         run(&mut a, 40, press(&[Button::Right]), press(&[Button::Left]));
         let before = a.fighters[1].health;
-        run(&mut a, ATTACK_TOTAL as usize, press(&[Button::Attack]), PlayerInput::NEUTRAL);
+        run(
+            &mut a,
+            ATTACK_TOTAL as usize,
+            press(&[Button::Attack]),
+            PlayerInput::NEUTRAL,
+        );
         assert_eq!(a.fighters[1].health, before - ATTACK_DAMAGE);
         assert_eq!(a.fighters[1].action, Action::Hitstun);
     }
@@ -699,7 +719,12 @@ mod tests {
         run(&mut a, 40, press(&[Button::Right]), press(&[Button::Left]));
         let before = a.fighters[1].health;
         // Hold attack through several active frames.
-        run(&mut a, ATTACK_TOTAL as usize - 1, press(&[Button::Attack]), PlayerInput::NEUTRAL);
+        run(
+            &mut a,
+            ATTACK_TOTAL as usize - 1,
+            press(&[Button::Attack]),
+            PlayerInput::NEUTRAL,
+        );
         assert_eq!(a.fighters[1].health, before - ATTACK_DAMAGE);
     }
 
@@ -721,7 +746,12 @@ mod tests {
     fn an_attack_out_of_range_does_nothing() {
         let mut a = Arena::new();
         let before = a.fighters[1].health;
-        run(&mut a, ATTACK_TOTAL as usize, press(&[Button::Attack]), PlayerInput::NEUTRAL);
+        run(
+            &mut a,
+            ATTACK_TOTAL as usize,
+            press(&[Button::Attack]),
+            PlayerInput::NEUTRAL,
+        );
         assert_eq!(a.fighters[1].health, before);
     }
 
@@ -730,7 +760,12 @@ mod tests {
         let mut a = Arena::new();
         let before = a.fighters[1].health;
         run(&mut a, 1, press(&[Button::Special]), PlayerInput::NEUTRAL);
-        run(&mut a, SPECIAL_RELEASE as usize, PlayerInput::NEUTRAL, PlayerInput::NEUTRAL);
+        run(
+            &mut a,
+            SPECIAL_RELEASE as usize,
+            PlayerInput::NEUTRAL,
+            PlayerInput::NEUTRAL,
+        );
         assert!(a.projectiles.iter().any(|p| p.active), "shot must exist");
 
         run(&mut a, 60, PlayerInput::NEUTRAL, PlayerInput::NEUTRAL);
@@ -740,7 +775,12 @@ mod tests {
     #[test]
     fn the_special_respects_its_cooldown() {
         let mut a = Arena::new();
-        run(&mut a, SPECIAL_TOTAL as usize + 1, press(&[Button::Special]), PlayerInput::NEUTRAL);
+        run(
+            &mut a,
+            SPECIAL_TOTAL as usize + 1,
+            press(&[Button::Special]),
+            PlayerInput::NEUTRAL,
+        );
         let live = a.projectiles.iter().filter(|p| p.active).count();
         // Cooldown outlasts the move, so holding the button cannot chain shots.
         run(&mut a, 10, press(&[Button::Special]), PlayerInput::NEUTRAL);
@@ -752,18 +792,31 @@ mod tests {
         let mut a = Arena::new();
         a.fighters[1].health = 1;
         run(&mut a, 40, press(&[Button::Right]), press(&[Button::Left]));
-        run(&mut a, ATTACK_TOTAL as usize, press(&[Button::Attack]), PlayerInput::NEUTRAL);
+        run(
+            &mut a,
+            ATTACK_TOTAL as usize,
+            press(&[Button::Attack]),
+            PlayerInput::NEUTRAL,
+        );
         assert!(a.freeze > 0, "a KO must freeze the round");
         assert_eq!(a.rounds_won[0], 1);
 
-        run(&mut a, KO_FREEZE_FRAMES as usize + 1, PlayerInput::NEUTRAL, PlayerInput::NEUTRAL);
+        run(
+            &mut a,
+            KO_FREEZE_FRAMES as usize + 1,
+            PlayerInput::NEUTRAL,
+            PlayerInput::NEUTRAL,
+        );
         assert_eq!(a.fighters[1].health, MAX_HEALTH, "next round starts fresh");
         assert_eq!(a.rounds_won[0], 1, "the score survives the reset");
     }
 
     #[test]
     fn output_mode_cannot_touch_simulation_state() {
-        let inputs = [press(&[Button::Right, Button::Attack]), press(&[Button::Block])];
+        let inputs = [
+            press(&[Button::Right, Button::Attack]),
+            press(&[Button::Block]),
+        ];
         let mut shown = Arena::new();
         let mut replayed = Arena::new();
         for _ in 0..300 {

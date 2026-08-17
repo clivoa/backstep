@@ -77,12 +77,7 @@ impl Renderer {
             };
             self.canvas.set_draw_color(colour);
             self.canvas
-                .fill_rect(Rect::new(
-                    x - FIGHTER_W as i32 / 2,
-                    y,
-                    FIGHTER_W,
-                    FIGHTER_H,
-                ))
+                .fill_rect(Rect::new(x - FIGHTER_W as i32 / 2, y, FIGHTER_W, FIGHTER_H))
                 .map_err(anyhow::Error::msg)?;
 
             // A nub showing which way the fighter is facing.
@@ -108,7 +103,10 @@ impl Renderer {
 
     fn draw_health_bars(&mut self, arena: &Arena) -> Result<()> {
         let bar_w = 380u32;
-        for (i, x) in [(0usize, 20i32), (1usize, WINDOW_W as i32 - 20 - bar_w as i32)] {
+        for (i, x) in [
+            (0usize, 20i32),
+            (1usize, WINDOW_W as i32 - 20 - bar_w as i32),
+        ] {
             let health = arena.fighters[i].health.max(0) as u32;
             let filled = bar_w * health / MAX_HEALTH as u32;
             self.canvas.set_draw_color(Color::RGB(50, 54, 66));
@@ -121,7 +119,11 @@ impl Renderer {
                 Color::RGB(200, 140, 110)
             });
             // P2's bar drains from the right, arcade style.
-            let fill_x = if i == 0 { x } else { x + (bar_w - filled) as i32 };
+            let fill_x = if i == 0 {
+                x
+            } else {
+                x + (bar_w - filled) as i32
+            };
             self.canvas
                 .fill_rect(Rect::new(fill_x, 20, filled, 18))
                 .map_err(anyhow::Error::msg)?;
@@ -130,11 +132,7 @@ impl Renderer {
     }
 
     /// Blit the emulator's framebuffer, letterboxed to preserve its aspect.
-    pub fn draw_video(
-        &mut self,
-        texture: &mut Texture<'_>,
-        frame: &VideoFrame,
-    ) -> Result<()> {
+    pub fn draw_video(&mut self, texture: &mut Texture<'_>, frame: &VideoFrame) -> Result<()> {
         if frame.is_empty() {
             return Ok(());
         }
@@ -200,7 +198,13 @@ impl Renderer {
             } else {
                 Color::RGB(220, 226, 236)
             };
-            self.draw_text(line, 18, 56 + (i as u32 * line_h) as i32, OVERLAY_SCALE, colour)?;
+            self.draw_text(
+                line,
+                18,
+                56 + (i as u32 * line_h) as i32,
+                OVERLAY_SCALE,
+                colour,
+            )?;
         }
 
         self.draw_strip(overlay)
@@ -235,7 +239,14 @@ impl Renderer {
     }
 
     /// Draw a string with the bitmap font.
-    pub fn draw_text(&mut self, text: &str, x: i32, y: i32, scale: u32, colour: Color) -> Result<()> {
+    pub fn draw_text(
+        &mut self,
+        text: &str,
+        x: i32,
+        y: i32,
+        scale: u32,
+        colour: Color,
+    ) -> Result<()> {
         self.canvas.set_draw_color(colour);
         let rects: Vec<Rect> = font::pixels(text)
             .into_iter()
@@ -263,7 +274,9 @@ impl Renderer {
 fn bytemuck_cast(pixels: &[u32]) -> &[u8] {
     // SAFETY: `u32` is `Copy` with no niches; the resulting slice covers exactly
     // the same allocation, is read-only, and has a smaller alignment requirement.
-    unsafe { std::slice::from_raw_parts(pixels.as_ptr() as *const u8, std::mem::size_of_val(pixels)) }
+    unsafe {
+        std::slice::from_raw_parts(pixels.as_ptr() as *const u8, std::mem::size_of_val(pixels))
+    }
 }
 
 #[cfg(test)]

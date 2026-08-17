@@ -99,8 +99,8 @@ pub struct Machine {
 
 impl Machine {
     fn step(&mut self, inputs: [u16; 2]) {
-        for p in 0..2 {
-            let held = |id: c_uint| inputs[p] & (1 << id) != 0;
+        for (p, mask) in inputs.into_iter().enumerate() {
+            let held = |id: c_uint| mask & (1 << id) != 0;
             if held(ID_LEFT) {
                 self.x[p] -= 1;
             }
@@ -251,7 +251,12 @@ pub extern "C" fn retro_set_environment(cb: retro_environment_t) {
     // environment handler is exercised.
     let mut format: c_uint = RETRO_PIXEL_FORMAT_XRGB8888;
     // SAFETY: `cb` came from the frontend and `format` is a valid c_uint.
-    unsafe { cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &mut format as *mut _ as *mut c_void) };
+    unsafe {
+        cb(
+            RETRO_ENVIRONMENT_SET_PIXEL_FORMAT,
+            &mut format as *mut _ as *mut c_void,
+        )
+    };
 }
 
 #[no_mangle]
