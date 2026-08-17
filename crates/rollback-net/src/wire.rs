@@ -94,6 +94,9 @@ pub struct PeerIdentity {
 }
 
 impl PeerIdentity {
+    /// Bytes an identity occupies on the wire. Asserted in the tests so a
+    /// field added without a version bump is caught rather than shipped.
+    #[cfg(test)]
     const ENCODED_LEN: usize = 1 + 1 + 1 + 20 + 8 + 8 + 32 + 32;
 
     /// Everything that must match between the two peers, in order, so the

@@ -11,4 +11,5 @@ rollback-core.workspace = true
 rollback-net.workspace = true
 rollback-telemetry.workspace = true
 anyhow.workspace = true
+sha2.workspace = true
 thiserror.workspace = true

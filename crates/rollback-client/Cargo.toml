@@ -4,5 +4,19 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "SDL2 client: the human plays P1 and watches the rollback overlay."
+
+[[bin]]
+name = "rollback-client"
+path = "src/main.rs"
 
 [dependencies]
+rollback-core.workspace = true
+rollback-net.workspace = true
+rollback-arena.workspace = true
+rollback-libretro.workspace = true
+rollback-runner.workspace = true
+rollback-telemetry.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+sdl2 = { version = "0.37", default-features = false }

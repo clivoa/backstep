@@ -4,5 +4,18 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Headless P2 peer: binds UDP/7000 and plays with a deterministic FSM."
+
+[[bin]]
+name = "rollback-bot"
+path = "src/main.rs"
 
 [dependencies]
+rollback-core.workspace = true
+rollback-net.workspace = true
+rollback-arena.workspace = true
+rollback-libretro.workspace = true
+rollback-runner.workspace = true
+rollback-telemetry.workspace = true
+anyhow.workspace = true
+clap.workspace = true
