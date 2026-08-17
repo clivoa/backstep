@@ -48,11 +48,111 @@ numa bancada local, é praticamente nada.
 
 ## Resultados
 
-<!-- RESULTADOS -->
+### Execução de referência
+
+Arena, 180 s por perfil, semente 4242, dois bots em loopback, commit
+`ee5ca9422d88`. Os dez logs completos estão em `artifacts/report/summary.csv`.
+
+| Perfil | Peer | FPS | Rollbacks | Prof. média | Prof. máx | Acurácia | Trabalho extra | Stalls | Checksums | Desync | RTT | Var. RTT | Perda | Bitrate | CPU |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| natural | P1 | 60,01 | 1 | 1,00 | 1 | — | 0,01% | 0 | 179 | não | 16,7 ms | 0,5 ms | 0,00% | 34,9 kbit/s | 2,0 s |
+| natural | P2 | 60,01 | 1 | 1,00 | 1 | — | 0,01% | 0 | 180 | não | 16,7 ms | 0,4 ms | 0,00% | 34,9 kbit/s | 2,2 s |
+| delay20 | P1 | 60,01 | 1 | 1,00 | 1 | — | 0,01% | 0 | 179 | não | 77,4 ms | 11,2 ms | 0,00% | 34,9 kbit/s | 2,2 s |
+| delay20 | P2 | 60,01 | **727** | 4,00 | 5 | 93,3% | **26,9%** | 0 | 180 | não | 83,4 ms | 0,5 ms | 0,00% | 34,9 kbit/s | 2,2 s |
+| jitter30 | P1 | 60,01 | 1 | 1,00 | 1 | — | 0,01% | 0 | 179 | não | 84,0 ms | 19,2 ms | 0,00% | 34,9 kbit/s | 2,1 s |
+| jitter30 | P2 | 60,01 | **683** | 4,25 | 5 | 93,7% | **26,9%** | 0 | 180 | não | 86,9 ms | 17,9 ms | 0,00% | 34,9 kbit/s | 2,1 s |
+| loss2 | P1 | 60,01 | 1 | 1,00 | 1 | 87,5% | 0,01% | 0 | 176 | não | 16,5 ms | 0,5 ms | 1,89% | 34,9 kbit/s | 2,0 s |
+| loss2 | P2 | 60,01 | 12 | 1,00 | 1 | 94,2% | 0,11% | 0 | 177 | não | 16,7 ms | 0,4 ms | 1,89% | 34,9 kbit/s | 2,1 s |
+| combined | P1 | 60,01 | 122 | 1,00 | 1 | 93,3% | 1,1% | 0 | 177 | não | 99,3 ms | 19,5 ms | 1,95% | 34,9 kbit/s | 2,0 s |
+| combined | P2 | 60,01 | **700** | 4,83 | **6** | 93,5% | **31,3%** | 1 | 178 | não | 102,7 ms | 19,8 ms | 1,95% | 34,9 kbit/s | 2,0 s |
+
+Zero desyncs em 1 800 segundos de sessão e 1 786 comparações de checksum.
 
 ## Interpretação
 
-<!-- INTERPRETACAO -->
+### 60 Hz sustentados em toda condição
+
+`effective_fps` é 60,01 nos dez logs, inclusive no perfil combinado onde um peer
+re-simulou 31% de trabalho extra. A um estado de 204 bytes o rollback custa
+CPU desprezível — 2 segundos de CPU para 180 segundos de sessão, ou cerca de 1%
+de um núcleo. Esse número não se transfere para o SFA3, onde o `retro_serialize`
+domina; é justamente por isso que ele é medido.
+
+### A assimetria é o resultado mais interessante
+
+Sob `delay20`, o P2 fez 727 rollbacks e o P1 fez **um**.
+
+Isso não é bug: é como o rollback funciona. Os dois peers rodam relógios de
+frame independentes, então há uma diferença de fase fixa entre eles. Quem está
+*à frente* chega no frame N antes de o input do peer para o frame N existir, e
+portanto prevê e corrige. Quem está *atrás* recebe o input antes de precisar
+dele e nunca chuta.
+
+Nesta bancada o P2 hospeda e completa o handshake um round-trip antes do P1, então
+ele fica permanentemente à frente. Numa sessão real Madrid–Frankfurt a fase é
+arbitrária, mas igualmente persistente: **um dos dois jogadores paga
+essencialmente todo o custo de rollback da partida**, e qual deles é decidido por
+alguns milissegundos na largada.
+
+Isso tem uma consequência prática que os números tornam concreta: comparar
+"quantos rollbacks meu jogo faz" entre dois clientes não diz nada sobre a
+qualidade da rede, e sim sobre quem começou primeiro.
+
+O sinal de que os dois estão de fato jogando o mesmo jogo não é a simetria dos
+rollbacks — é `checksums_compared` subir nos dois lados com `desync = false`.
+Isso vale nas dez sessões.
+
+### A redundância de oito inputs absorve 2% de perda quase sem custo
+
+`loss2` mede 1,89% de perda inferida — a impedância pedida — e produz **12
+rollbacks em 180 segundos** no peer que está à frente, contra 727 do `delay20`.
+
+A perda quase não vira rollback porque o input perdido chega no datagrama
+seguinte, 16,7 ms depois, muito antes de ser necessário. É exatamente o que a
+repetição de oito inputs foi feita para fazer, e é a razão de não haver
+retransmissão no protocolo.
+
+Compare com `combined`, que soma perda ao atraso: os 700 rollbacks vêm do atraso,
+não da perda. Perda e latência não são o mesmo problema, e o rollback só é
+sensível ao segundo.
+
+### Jitter não é pior que atraso, para o rollback
+
+`jitter30` (30 ± 15 ms) e `delay20` (20 ms fixos) produzem praticamente o mesmo
+resultado: ~700 rollbacks, profundidade média ~4, acurácia ~93%. A variação do
+RTT sobe de 0,5 ms para 17,9 ms, como esperado, mas a profundidade máxima do
+rollback mal se move (5 nos dois).
+
+Faz sentido: o rollback já corrige a cada frame. Um datagrama que chega 15 ms
+tarde demais é corrigido pelo mesmo mecanismo que corrige um que chega 20 ms
+tarde. É o *lockstep* que sofre com jitter, porque ele precisa esperar o pior
+caso; o rollback só precisa que o pior caso caiba na janela de previsão.
+
+### A profundidade fica bem abaixo do limite
+
+O máximo observado foi **6**, contra um limite de 8 e um buffer de 16 estados.
+Um único stall apareceu nas dez sessões (P2 sob `combined`).
+
+Ou seja: o dimensionamento tem folga real para essas condições. Um limite de
+previsão menor — 6, por exemplo — encostaria com frequência sob `combined`, e um
+maior não compraria nada, só aumentaria o pior caso de CPU por correção.
+
+### Acurácia de previsão de ~93,5%, estável
+
+Sob qualquer perfil com atraso, a regra "repita o último input confirmado"
+acerta cerca de 93,5% dos frames que precisou chutar. É notavelmente insensível
+ao perfil: 93,3% em `delay20`, 93,7% em `jitter30`, 93,5% em `combined`.
+
+Isso reforça o ponto de [01 — Teoria](01-teoria.md): a previsão não funciona por
+ser esperta, e sim porque inputs de jogo de luta são segurados por muitos frames.
+E como estes são bots, que mudam de input com mais frequência que humanos, é
+razoável ler 93,5% como um **piso**.
+
+### O bitrate não depende de nada
+
+34,9 kbit/s em todos os dez logs, com variação de 0,03%. Só inputs trafegam, a
+uma taxa fixa de 60 Hz, com oito repetições de largura fixa. Nem perda, nem
+atraso, nem rollback mudam quanto o protocolo põe no cabo.
 
 ## O que os experimentos não medem
 

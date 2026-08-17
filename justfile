@@ -80,6 +80,12 @@ build:
 build-core:
     ops/scripts/build-fbneo.sh
 
+# Ask the core what it thinks of a ROM. FBNeo reports an unusable romset only on
+# the emulated screen, so this is how the failure gets a shape.
+inspect-core rom:
+    cargo run --release -p rollback-libretro --example inspect-core -- \
+        "{{core}}" "{{rom}}" artifacts/system
+
 # --- local observability ---------------------------------------------------
 
 # Prometheus on :9090 and Grafana on :3000, both bound to loopback.

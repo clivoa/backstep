@@ -49,6 +49,15 @@ pub struct HostState {
     pub input_polls: u64,
     /// Environment commands the core asked for that this host does not answer.
     pub unhandled_environment: Vec<c_uint>,
+    /// Messages the core asked the frontend to display.
+    ///
+    /// This is the *only* diagnostic channel a stable-Rust frontend has. The
+    /// libretro log interface needs a C-variadic function, which stable Rust
+    /// cannot define, so it is refused -- and without capturing these, a core
+    /// that fails to load a ROM fails silently with no reason given. FBNeo in
+    /// particular returns success from `retro_load_game` even when the romset
+    /// is unusable, and explains itself only here.
+    pub messages: Vec<String>,
 }
 
 static HOST: LazyLock<Mutex<HostState>> = LazyLock::new(|| {
@@ -120,7 +129,43 @@ pub fn reset_state() {
         h.frames_discarded = 0;
         h.input_polls = 0;
         h.unhandled_environment.clear();
+        h.messages.clear();
     });
+}
+
+/// Copy a NUL-terminated message out of the core and keep it.
+fn record_message(msg: *const c_char) {
+    if msg.is_null() {
+        return;
+    }
+    // SAFETY: libretro guarantees a NUL-terminated string valid for the call.
+    let text = unsafe { CStr::from_ptr(msg) }
+        .to_string_lossy()
+        .into_owned();
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return;
+    }
+    with_host(|h| {
+        // Cores repeat the same notification for several frames; keep one copy.
+        if h.messages.last().map(String::as_str) != Some(text.as_str()) {
+            h.messages.push(text);
+        }
+    });
+}
+
+/// Messages the core has asked the frontend to display, oldest first.
+pub fn messages() -> Vec<String> {
+    with_host(|h| h.messages.clone())
+}
+
+/// The messages formatted for an error message, or an empty string.
+pub fn render_messages() -> String {
+    let messages = messages();
+    if messages.is_empty() {
+        return String::new();
+    }
+    format!("\n  core said: {}", messages.join("\n  core said: "))
 }
 
 // --- callbacks -------------------------------------------------------------
@@ -217,6 +262,24 @@ pub unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> bool {
             }
             true
         }
+        RETRO_ENVIRONMENT_SET_MESSAGE => {
+            if data.is_null() {
+                return false;
+            }
+            // SAFETY: the command contract says `data` is a `retro_message`.
+            let msg = unsafe { (*(data as *const retro_message)).msg };
+            record_message(msg);
+            true
+        }
+        RETRO_ENVIRONMENT_SET_MESSAGE_EXT => {
+            if data.is_null() {
+                return false;
+            }
+            // SAFETY: the command contract says `data` is a `retro_message_ext`.
+            let msg = unsafe { (*(data as *const retro_message_ext)).msg };
+            record_message(msg);
+            true
+        }
         RETRO_ENVIRONMENT_SHUTDOWN => {
             with_host(|h| h.shutdown_requested = true);
             true
@@ -241,8 +304,7 @@ pub unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> bool {
         | RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO
         | RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL
         | RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME
-        | RETRO_ENVIRONMENT_SET_ROTATION
-        | RETRO_ENVIRONMENT_SET_MESSAGE => true,
+        | RETRO_ENVIRONMENT_SET_ROTATION => true,
         // Deliberately unanswered. The log interface in particular needs a
         // C-variadic function, which stable Rust cannot define; cores fall back
         // to their own logging when it is refused.

@@ -170,6 +170,31 @@ just build-core
 - **Lento** — 20 a 40 minutos numa máquina de 10 núcleos é esperado. Ajuste com
   `JOBS=n`.
 
+## `core reports a serialize size of zero`
+
+```
+Error: loading ROM "/caminho/sfa3.zip"
+Caused by: core reports a serialize size of zero, so no game is actually running.
+```
+
+O core carregou, o ROM foi aceito, e nenhum jogo está rodando. O FBNeo retorna
+sucesso de `retro_load_game` mesmo com um romset inutilizável — ele mostra o
+motivo na tela emulada em vez de contar ao frontend — então um estado de tamanho
+zero é como um set incompleto aparece aqui.
+
+Causa mais comum: **falta um arquivo**. Sets CPS-2 atuais incluem a chave de
+descriptografia dentro do zip (para o SFA3: `sfa3.key`, 20 bytes, CRC
+`54fa39c6`); um set antigo tem os outros 20 arquivos corretos e mesmo assim não
+roda.
+
+```bash
+just inspect-core rom=/caminho/sfa3.zip
+```
+
+Isso imprime o que o core diz, quais comandos de ambiente ele pediu, e o tamanho
+do estado. Para conferir arquivo por arquivo, compare os CRCs do seu zip com
+`Sfa3RomDesc[]` em `src/burn/drv/capcom/d_cps2.cpp` no FBNeo.
+
 ## O relatório sai vazio
 
 ```

@@ -51,6 +51,7 @@ pub const RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO: c_uint = 34;
 pub const RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: c_uint = 35;
 pub const RETRO_ENVIRONMENT_SET_GEOMETRY: c_uint = 37;
 pub const RETRO_ENVIRONMENT_GET_LANGUAGE: c_uint = 39;
+pub const RETRO_ENVIRONMENT_SET_MESSAGE_EXT: c_uint = 60;
 pub const RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: c_uint = 51 | RETRO_ENVIRONMENT_EXPERIMENTAL;
 pub const RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: c_uint = 52;
 pub const RETRO_ENVIRONMENT_SET_CORE_OPTIONS: c_uint = 53;
@@ -102,6 +103,28 @@ pub struct retro_game_info {
     pub data: *const c_void,
     pub size: usize,
     pub meta: *const c_char,
+}
+
+/// `RETRO_ENVIRONMENT_SET_MESSAGE`: the original, two-field form.
+#[repr(C)]
+pub struct retro_message {
+    pub msg: *const c_char,
+    pub frames: c_uint,
+}
+
+/// `RETRO_ENVIRONMENT_SET_MESSAGE_EXT`: the form cores use for real errors.
+///
+/// Only the leading `msg` pointer is read, but the whole struct is declared so
+/// the layout assumption is written down rather than assumed.
+#[repr(C)]
+pub struct retro_message_ext {
+    pub msg: *const c_char,
+    pub duration: c_uint,
+    pub priority: c_uint,
+    pub level: c_uint,
+    pub target: c_uint,
+    pub type_: c_uint,
+    pub progress: i8,
 }
 
 #[repr(C)]

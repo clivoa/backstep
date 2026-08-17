@@ -29,11 +29,24 @@ pub enum CoreError {
     ApiVersion { got: c_uint },
     #[error("a libretro core is already loaded in this process")]
     AlreadyLoaded,
-    #[error("core refused to load game '{path}'")]
+    #[error("core refused to load game '{path}'{}", crate::host::render_messages())]
     LoadGame { path: PathBuf },
     #[error("path '{0}' contains a NUL byte")]
     PathNotCString(PathBuf),
-    #[error("core reports a serialize size of zero: it cannot support rollback")]
+    #[error(
+        "core reports a serialize size of zero, so no game is actually running.\n\
+         \n\
+         FBNeo returns success from retro_load_game even when the romset is \n\
+         unusable -- it shows the reason on the emulated screen rather than \n\
+         telling the frontend -- so a zero state size is how an incomplete \n\
+         romset surfaces here.\n\
+         \n\
+         Most common cause: a missing file. Current CPS-2 sets include a \n\
+         decryption key (for SFA3: sfa3.key, 20 bytes) inside the romset zip; \n\
+         an older set without it has every other file correct and still cannot \n\
+         run. Compare your zip against the romset FBNeo expects.{}",
+        crate::host::render_messages()
+    )]
     NoSerializeSupport,
     #[error("retro_serialize failed for a {0}-byte buffer")]
     SerializeFailed(usize),
