@@ -1,0 +1,12 @@
+target/
+cores/
+artifacts/
+logs/
+*.zip
+*.so
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!example.tfvars
+session-key*

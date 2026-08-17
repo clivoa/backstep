@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rollback-core",
+    "crates/rollback-net",
+    "crates/rollback-arena",
+    "crates/rollback-libretro",
+    "crates/rollback-telemetry",
+    "crates/rollback-client",
+    "crates/rollback-bot",
+    "crates/rollback-report",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+
+[workspace.dependencies]
+rollback-core = { path = "crates/rollback-core" }
+rollback-net = { path = "crates/rollback-net" }
+rollback-arena = { path = "crates/rollback-arena" }
+rollback-libretro = { path = "crates/rollback-libretro" }
+rollback-telemetry = { path = "crates/rollback-telemetry" }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+hmac = "0.12"
+libc = "0.2"
+libloading = "0.8"
+proptest = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+
+[profile.release]
+debug = true
+overflow-checks = true

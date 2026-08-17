@@ -1,0 +1,14 @@
+[package]
+name = "rollback-arena"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Deterministic integer-only 2D fighting arena plus its reactive FSM bot."
+
+[dependencies]
+rollback-core.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
