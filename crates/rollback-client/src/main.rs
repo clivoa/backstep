@@ -18,7 +18,7 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use rollback_arena::Arena;
 use rollback_core::{NetworkProfile, PlayerHandle, SessionConfig, Simulation, SimulationKind};
-use rollback_libretro::{LibretroCore, LibretroSimulation, Sfa3Director};
+use rollback_libretro::{BootDirector, Game, LibretroCore, LibretroSimulation};
 use rollback_net::UdpTransport;
 use rollback_runner::{app, handshake, Role, RunnerConfig, SessionRunner, StepOutcome};
 use rollback_telemetry::SessionInfo;
@@ -114,7 +114,17 @@ fn main() -> Result<()> {
 
     let auth = app::session_key_from_env().map_err(anyhow::Error::msg)?;
     let core_hash = app::hash_or_absent(args.core.as_deref())?;
-    let rom_hash = app::hash_or_absent(args.rom.as_deref())?;
+    let bios = app::bios_path(args.sim, &args.system_dir);
+    if let Some(bios) = &bios {
+        anyhow::ensure!(
+            bios.exists(),
+            "{} needs the Neo Geo BIOS at {}. Both peers must use the same file: \
+             it is hashed into the handshake, and it is half the code that boots the game.",
+            args.sim.as_str(),
+            bios.display()
+        );
+    }
+    let rom_hash = app::hash_rom_set(args.rom.as_deref(), bios.as_deref())?;
 
     let mut transport = UdpTransport::bind(args.bind, auth, profile)
         .with_context(|| format!("binding {}", args.bind))?;
@@ -208,13 +218,30 @@ fn main() -> Result<()> {
                 |renderer, arena: &Arena, _| renderer.draw_arena(arena),
             )
         }
-        SimulationKind::Sfa3 => {
-            let core_path = args.core.context("--core is required for --sim sfa3")?;
-            let rom_path = args.rom.context("--rom is required for --sim sfa3")?;
+        SimulationKind::Sfa3 | SimulationKind::LastBlade2 => {
+            let game = match args.sim {
+                SimulationKind::LastBlade2 => Game::LastBlade2,
+                _ => Game::Sfa3,
+            };
+            let core_path = args
+                .core
+                .with_context(|| format!("--core is required for --sim {game}"))?;
+            let rom_path = args
+                .rom
+                .with_context(|| format!("--rom is required for --sim {game}"))?;
             std::fs::create_dir_all(&args.system_dir)?;
             let dir = args.system_dir.to_string_lossy().to_string();
             rollback_libretro::set_directories(&dir, &dir);
             rollback_libretro::set_options(rollback_libretro::PINNED_CORE_OPTIONS);
+
+            // Both peers must boot a machine in the same state, and FBNeo
+            // persists one between runs. See `clear_persistent_state`.
+            let cleared =
+                rollback_libretro::clear_persistent_state(&args.system_dir, game.romset())
+                    .with_context(|| format!("clearing saved state in {:?}", args.system_dir))?;
+            for path in &cleared {
+                eprintln!("cleared stale machine state: {}", path.display());
+            }
 
             let mut core = LibretroCore::load(&core_path)
                 .with_context(|| format!("loading core {core_path:?}"))?;
@@ -222,12 +249,14 @@ fn main() -> Result<()> {
                 .with_context(|| format!("loading ROM {rom_path:?}"))?;
             let geometry = core.geometry();
             eprintln!(
-                "core: {} {} | {}x{} | state {} bytes",
+                "core: {} {} | {} | {}x{} | state {} bytes | {:.2} Hz native",
                 core.library_name,
                 core.library_version,
+                game,
                 geometry.base_width,
                 geometry.base_height,
-                core.state_size()
+                core.state_size(),
+                core.av_timing().fps
             );
 
             let creator = renderer.texture_creator();
@@ -237,15 +266,19 @@ fn main() -> Result<()> {
                 geometry.max_height.max(geometry.base_height),
             )?;
 
-            let runner =
-                SessionRunner::new(LibretroSimulation::new(core), transport, runner_config)?;
+            let runner = SessionRunner::new(
+                LibretroSimulation::new(core)
+                    .with_checksum_skip(rollback_libretro::core::CHECKSUM_SKIP_BYTES),
+                transport,
+                runner_config,
+            )?;
             play(
                 runner,
                 frame_budget,
                 &mut renderer,
                 &mut events,
                 pad.as_ref(),
-                Some(Sfa3Director::new()),
+                Some(BootDirector::new(game)),
                 player.index(),
                 move |renderer, sim: &LibretroSimulation, _| {
                     renderer.draw_video(&mut texture, &sim.video())
@@ -263,7 +296,7 @@ fn play<S, D>(
     renderer: &mut Renderer,
     events: &mut sdl2::EventPump,
     pad: Option<&sdl2::controller::GameController>,
-    director: Option<Sfa3Director>,
+    director: Option<BootDirector>,
     slot: usize,
     mut draw: D,
 ) -> Result<()>

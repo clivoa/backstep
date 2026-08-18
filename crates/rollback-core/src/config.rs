@@ -20,6 +20,8 @@ pub enum SimulationKind {
     Arena,
     /// Street Fighter Alpha 3 hosted through the libretro core.
     Sfa3,
+    /// The Last Blade 2 hosted through the same libretro core.
+    LastBlade2,
 }
 
 impl SimulationKind {
@@ -27,6 +29,7 @@ impl SimulationKind {
         match self {
             SimulationKind::Arena => "arena",
             SimulationKind::Sfa3 => "sfa3",
+            SimulationKind::LastBlade2 => "lastblade2",
         }
     }
 }
@@ -38,8 +41,9 @@ impl std::str::FromStr for SimulationKind {
         match s {
             "arena" => Ok(SimulationKind::Arena),
             "sfa3" => Ok(SimulationKind::Sfa3),
+            "lastblade2" | "lastbld2" => Ok(SimulationKind::LastBlade2),
             other => Err(format!(
-                "unknown simulation '{other}' (expected arena|sfa3)"
+                "unknown simulation '{other}' (expected arena|sfa3|lastblade2)"
             )),
         }
     }

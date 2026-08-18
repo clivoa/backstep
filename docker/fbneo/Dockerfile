@@ -37,12 +37,27 @@ RUN git init -q \
     && git fetch -q --depth 1 origin "${FBNEO_LIBRETRO_COMMIT}" \
     && git checkout -q FETCH_HEAD
 
+# Make the core deterministic across processes. Without this, FBNeo seeds its
+# RNG and its emulated calendar clock from time(NULL), and two peers that boot
+# the same ROM one second apart diverge before the first input. The full
+# measurement and reasoning are in docker/fbneo/determinism.md.
+#
+# The verification below is the point: a future commit that renames or moves
+# this line must break the build loudly rather than quietly produce a core that
+# desyncs a few hundred frames into every session.
+RUN grep -q '^int kNetGame = 0;' src/burner/libretro/libretro.cpp \
+        || (echo "FATAL: kNetGame declaration not found -- see docker/fbneo/determinism.md" >&2; exit 1) \
+    && sed -i 's/^int kNetGame = 0;/int kNetGame = 1; \/* PATCHED: deterministic clock+RNG for rollback *\//' \
+        src/burner/libretro/libretro.cpp \
+    && grep -q '^int kNetGame = 1;' src/burner/libretro/libretro.cpp \
+        || (echo "FATAL: kNetGame patch did not apply" >&2; exit 1)
+
 RUN make -j"${JOBS}" -C src/burner/libretro
 
 # Collect the artefact plus the provenance the handshake will compare.
 RUN mkdir -p /out \
     && cp src/burner/libretro/fbneo_libretro.so /out/fbneo_libretro.so \
-    && printf 'libretro_fork_commit=%s\nspec_commit=%s\n' \
+    && printf 'libretro_fork_commit=%s\nspec_commit=%s\npatches=kNetGame=1\n' \
         "$(git rev-parse HEAD)" "${FBNEO_SPEC_COMMIT}" > /out/fbneo-commit.txt \
     && sha256sum /out/fbneo_libretro.so | awk '{print $1}' > /out/fbneo_libretro.so.sha256
 

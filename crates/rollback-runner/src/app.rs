@@ -120,6 +120,39 @@ pub fn digest_hex(digest: &[u8; 32]) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Hash everything the emulator loads as ROM data: the game, and the BIOS if
+/// the game needs one.
+///
+/// The handshake carries one `rom_hash`, and it has to cover *all* of it. A Neo
+/// Geo game is only half the code that runs -- `neogeo.zip` supplies the BIOS
+/// that boots it, and two peers with different BIOS revisions would pass the
+/// handshake and then desync during the boot sequence, before either player had
+/// touched a button. That failure looks exactly like a bug in the rollback and
+/// is nothing of the sort, so the cheap fix is to refuse it at the door.
+///
+/// Domain-separated by role so that swapping the two files is a different hash.
+pub fn hash_rom_set(rom: Option<&Path>, bios: Option<&Path>) -> std::io::Result<[u8; 32]> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"rom\0");
+    hasher.update(hash_or_absent(rom)?);
+    hasher.update(b"bios\0");
+    hasher.update(hash_or_absent(bios)?);
+    Ok(hasher.finalize().into())
+}
+
+/// Where the BIOS for `simulation` lives, given the system directory, or `None`
+/// when this simulation does not use one.
+pub fn bios_path(simulation: SimulationKind, system_dir: &Path) -> Option<std::path::PathBuf> {
+    match simulation {
+        // Neo Geo drivers pull in the `neogeo` romset; FBNeo looks for it
+        // beside the game and in the system directory, and this lab puts it in
+        // the system directory so both peers ship it the same way.
+        SimulationKind::LastBlade2 => Some(system_dir.join("neogeo.zip")),
+        SimulationKind::Arena | SimulationKind::Sfa3 => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -97,13 +97,13 @@ Cada passo tem um motivo:
 | Física da arena | `rollback-arena::arena` | Só inteiros, sem RNG |
 | Bot da arena | `rollback-arena::bot` | É um **jogador**, não parte da simulação |
 | FFI libretro | `rollback-libretro::{ffi,host,core}` | Único lugar com `unsafe` |
-| Boot do SFA3 | `rollback-libretro::sfa3` | Macros temporizadas, sem offsets de ROM |
+| Boot dos jogos | `rollback-libretro::script` | Macros temporizadas, sem offsets de ROM |
 | Exportador/JSONL | `rollback-telemetry` | Uma fonte, três consumidores |
 | Handshake | `rollback-runner::handshake` | Compatibilidade, não segurança |
 
 ## Por que os bots não são parte da simulação
 
-Tanto `ArenaBot` quanto `Sfa3Bot` produzem um `PlayerInput` por frame, exatamente
+Tanto `ArenaBot` quanto `ScriptedBot` produzem um `PlayerInput` por frame, exatamente
 como um controle faria. O input viaja pelo cabo como qualquer outro.
 
 Isso importa: se o bot fosse parte da simulação, os dois peers precisariam
@@ -112,9 +112,9 @@ possível de desync. Como ele é um *jogador*, a aleatoriedade dele é irrelevan
 para a sincronia — ela só precisa ser determinística para que `just bench` seja
 repetível a partir da semente.
 
-O `Sfa3Bot` tem uma restrição adicional: ele **não lê nada do jogo**. Não pode,
+O `ScriptedBot` tem uma restrição adicional: ele **não lê nada do jogo**. Não pode,
 sem offsets de memória da ROM, que este laboratório proíbe deliberadamente
-(o porquê está em [09 — SFA3](09-sfa3.md)). Ele toca um repertório fixo de macros.
+(o porquê está em [09 — Jogos reais](09-sfa3.md)). Ele toca um repertório fixo de macros.
 
 ## `unsafe`: onde está e por quê
 

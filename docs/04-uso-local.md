@@ -41,7 +41,7 @@ just e2e             dois processos, socket real, os cinco perfis
 just bench           180 s por perfil, bot contra bot, gera o relatório
 just local-up        Prometheus + Grafana em 127.0.0.1
 just local-down      derruba a stack
-just play sim=…      humano no P1 contra o peer remoto
+just play <sim> [rom]   humano no P1 contra o peer remoto
 just report          reconstrói o relatório a partir dos logs em disco
 just build-core      compila o FBNeo em container reproduzível
 just clean-logs      apaga logs e relatórios locais (não toca na AWS)

@@ -18,7 +18,7 @@ use rollback_arena::{Arena, ArenaBot};
 use rollback_core::{
     NetworkProfile, PlayerHandle, PlayerInput, SessionConfig, Simulation, SimulationKind,
 };
-use rollback_libretro::{LibretroCore, LibretroSimulation, Sfa3Bot, Sfa3Director};
+use rollback_libretro::{BootDirector, Game, LibretroCore, LibretroSimulation, ScriptedBot};
 use rollback_net::{Authenticator, UdpTransport, DEFAULT_PORT};
 use rollback_runner::{app, handshake, Role, RunnerConfig, SessionRunner, StepOutcome};
 use rollback_telemetry::SessionInfo;
@@ -65,11 +65,12 @@ struct Args {
     #[arg(long, default_value_t = 180)]
     duration: u64,
 
-    /// libretro core, required for `--sim sfa3`.
+    /// libretro core, required for any emulated simulation.
     #[arg(long)]
     core: Option<PathBuf>,
 
-    /// ROM, required for `--sim sfa3`. Never distributed with this repo.
+    /// ROM, required for any emulated simulation. Never distributed with this
+    /// repo.
     #[arg(long)]
     rom: Option<PathBuf>,
 
@@ -130,7 +131,17 @@ fn main() -> Result<()> {
 
     let core_hash = app::hash_or_absent(args.core.as_deref())
         .with_context(|| format!("hashing core {:?}", args.core))?;
-    let rom_hash = app::hash_or_absent(args.rom.as_deref())
+    let bios = app::bios_path(args.sim, &args.system_dir);
+    if let Some(bios) = &bios {
+        anyhow::ensure!(
+            bios.exists(),
+            "{} needs the Neo Geo BIOS at {}. Both peers must use the same file: \
+             it is hashed into the handshake, and it is half the code that boots the game.",
+            args.sim.as_str(),
+            bios.display()
+        );
+    }
+    let rom_hash = app::hash_rom_set(args.rom.as_deref(), bios.as_deref())
         .with_context(|| format!("hashing ROM {:?}", args.rom))?;
 
     let mut transport = UdpTransport::bind(args.bind, auth, profile)
@@ -206,9 +217,17 @@ fn main() -> Result<()> {
                 bot.decide(arena)
             })
         }
-        SimulationKind::Sfa3 => {
-            let core_path = args.core.context("--core is required for --sim sfa3")?;
-            let rom_path = args.rom.context("--rom is required for --sim sfa3")?;
+        SimulationKind::Sfa3 | SimulationKind::LastBlade2 => {
+            let game = match args.sim {
+                SimulationKind::LastBlade2 => Game::LastBlade2,
+                _ => Game::Sfa3,
+            };
+            let core_path = args
+                .core
+                .with_context(|| format!("--core is required for --sim {game}"))?;
+            let rom_path = args
+                .rom
+                .with_context(|| format!("--rom is required for --sim {game}"))?;
             std::fs::create_dir_all(&args.system_dir)?;
             rollback_libretro::set_directories(
                 &args.system_dir.to_string_lossy(),
@@ -216,21 +235,36 @@ fn main() -> Result<()> {
             );
             rollback_libretro::set_options(rollback_libretro::PINNED_CORE_OPTIONS);
 
+            // Both peers must boot a machine in the same state, and FBNeo
+            // persists one between runs. See `clear_persistent_state`.
+            let cleared =
+                rollback_libretro::clear_persistent_state(&args.system_dir, game.romset())
+                    .with_context(|| format!("clearing saved state in {:?}", args.system_dir))?;
+            for path in &cleared {
+                eprintln!("cleared stale machine state: {}", path.display());
+            }
+
             let mut core = LibretroCore::load(&core_path)
                 .with_context(|| format!("loading core {core_path:?}"))?;
             core.load_game(&rom_path)
                 .with_context(|| format!("loading ROM {rom_path:?}"))?;
             eprintln!(
-                "core: {} {} | state {} bytes",
+                "core: {} {} | {} | state {} bytes | {:.2} Hz native",
                 core.library_name,
                 core.library_version,
-                core.state_size()
+                game,
+                core.state_size(),
+                core.av_timing().fps
             );
 
-            let runner =
-                SessionRunner::new(LibretroSimulation::new(core), transport, runner_config)?;
-            let director = Sfa3Director::new();
-            let mut bot = Sfa3Bot::new(config.seed);
+            let runner = SessionRunner::new(
+                LibretroSimulation::new(core)
+                    .with_checksum_skip(rollback_libretro::core::CHECKSUM_SKIP_BYTES),
+                transport,
+                runner_config,
+            )?;
+            let director = BootDirector::new(game);
+            let mut bot = ScriptedBot::new(game, config.seed, player.index());
             let slot = player.index();
             session_loop(
                 runner,
@@ -253,8 +287,8 @@ fn main() -> Result<()> {
 ///
 /// `next_input` gets the current simulation state and the frame about to be
 /// simulated, and returns this peer's input for it. The arena bot uses the
-/// state; the SFA3 bot cannot see the state at all (no ROM offsets -- see the
-/// module docs in `rollback_libretro::sfa3`) and ignores it.
+/// state; the scripted bot cannot see the state at all (no ROM offsets -- see
+/// the module docs in `rollback_libretro::script`) and ignores it.
 fn session_loop<S, F>(
     mut runner: SessionRunner<S>,
     frame_budget: u64,

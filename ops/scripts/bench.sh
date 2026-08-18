@@ -23,8 +23,8 @@ ROM="${ROM:-}"
 BOT="${ROOT}/target/release/rollback-bot"
 REPORT="${ROOT}/target/release/rollback-report"
 
-if [[ "${SIM}" == "sfa3" && -z "${ROM}" ]]; then
-    echo "SIM=sfa3 needs ROM=/path/to/sfa3.zip" >&2
+if [[ "${SIM}" != "arena" && -z "${ROM}" ]]; then
+    echo "SIM=${SIM} needs ROM=/path/to/game.zip" >&2
     exit 2
 fi
 
@@ -43,7 +43,7 @@ export ROLLBACK_SESSION_KEY
 mkdir -p "${LOG_DIR}" "${REPORT_DIR}"
 
 sim_args=(--sim "${SIM}")
-if [[ "${SIM}" == "sfa3" ]]; then
+if [[ "${SIM}" != "arena" ]]; then
     sim_args+=(--core "${CORE}" --rom "${ROM}")
 fi
 

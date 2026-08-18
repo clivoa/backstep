@@ -28,7 +28,7 @@ Reprodução:
 
 ```bash
 just bench                  # os cinco perfis, 180 s cada, ~15 min
-just bench duration=30      # versão rápida
+just bench 30      # versão rápida
 ```
 
 Os dois peers são bots com semente fixa e o emulador de rede também é semeado, de
@@ -67,6 +67,89 @@ Arena, 180 s por perfil, semente 4242, dois bots em loopback, commit
 | combined | P2 | 60,01 | **700** | 4,83 | **6** | 93,5% | **31,3%** | 1 | 178 | não | 102,7 ms | 19,8 ms | 1,95% | 34,9 kbit/s | 2,0 s |
 
 Zero desyncs em 1 800 segundos de sessão e 1 786 comparações de checksum.
+
+## O mesmo motor, num emulador de verdade
+
+A arena mede o motor de rollback. Ela não mede o que acontece quando a simulação
+é opaca e o estado é grande. Para isso, os mesmos cinco perfis rodaram com **The
+Last Blade 2** sob o FBNeo — mesmo `RollbackSession`, mesmo protocolo, mesmo
+runner; só a implementação de `Simulation` muda.
+
+```bash
+just e2e 90 lastblade2 /caminho/lastbld2.zip
+```
+
+Noventa segundos por perfil em vez de 180, porque o script de boot consome os
+primeiros ~33 segundos levando a máquina pelos menus (ver [09](09-sfa3.md)).
+
+### A diferença que importa: o tamanho do estado
+
+| | arena | Last Blade 2 |
+|---|---|---|
+| `state_bytes` | 204 | **415 155** |
+| razão | 1× | **2 036×** |
+| CPU por 90 s de sessão | ~1 s | **~34 s** |
+| fração de um núcleo | ~1% | **~38%** |
+
+Esse é o número que a arena não conseguia mostrar. Salvar estado na arena é
+copiar 204 bytes; no emulador é `retro_serialize` de 405 KB, e o rollback faz
+isso **uma vez por frame** mais uma vez por frame re-simulado.
+
+`LibretroSimulation` guarda o checksum do último snapshot em um `Cell`
+justamente por isso: sem esse cache, o par `save_state` + `checksum` que a
+sessão faz a cada frame custaria dois `retro_serialize` em vez de um. A 60 Hz com
+405 KB, isso é a diferença entre caber e não caber no orçamento de 16,7 ms.
+
+### Execução de referência
+
+240 s por perfil, semente 4242, dois bots jogando o repertório completo
+(combos encadeados, motion inputs, defesa alta e baixa, repel, agarrão), luta de
+verdade com rounds completos.
+
+| Perfil | Peer | FPS | Rollbacks | Prof. média | Prof. máx | Acurácia | Trabalho extra | Stalls | Checksums | Desync | RTT | Perda | CPU |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| natural | P1 | 60,01 | 0 | 0,00 | 0 | — | 0,0% | 0 | 240 | não | 16,6 ms | 0,00% | 85,6 s |
+| natural | P2 | 60,01 | 0 | 0,00 | 0 | — | 0,0% | 0 | 240 | não | 15,7 ms | 0,00% | 85,1 s |
+| delay20 | P1 | 60,00 | 0 | 0,00 | 0 | — | 0,0% | 0 | 240 | não | 69,9 ms | 0,00% | 69,3 s |
+| delay20 | P2 | 59,85 | **1006** | 6,53 | 7 | 93,0% | **45,7%** | 37 | 240 | não | 70,1 ms | 0,00% | 88,8 s |
+| jitter30 | P1 | 60,00 | 0 | 0,00 | 0 | — | 0,0% | 0 | 240 | não | 88,5 ms | 0,00% | 73,4 s |
+| jitter30 | P2 | 59,85 | **1006** | 6,90 | **8** | 93,0% | **48,2%** | 37 | 240 | não | 84,2 ms | 0,00% | 93,7 s |
+| loss2 | P1 | 60,01 | 19 | 1,00 | 1 | 93,0% | 0,1% | 0 | 237 | não | 28,2 ms | 1,88% | 88,0 s |
+| loss2 | P2 | 60,01 | 4 | 1,00 | 1 | 95,1% | 0,0% | 0 | 237 | não | 27,5 ms | 1,88% | 87,7 s |
+| combined | P1 | 60,00 | 125 | 1,11 | 2 | 93,1% | 1,0% | 0 | 239 | não | 97,6 ms | 2,00% | 78,0 s |
+| combined | P2 | 59,85 | **1004** | 4,84 | 7 | 93,0% | **33,7%** | 39 | 236 | não | 105,6 ms | 2,00% | 92,1 s |
+
+**Vinte minutos de luta emulada sob rollback, 2 389 checksums comparados, zero
+desyncs.**
+
+### O que muda em relação à arena
+
+**60 Hz aguentam até 48% de trabalho extra.** No `jitter30` o P2 re-simulou quase
+metade de um frame a mais por frame — em cima de um estado de 405 KB — e ainda
+entregou 59,85 fps. O custo aparece na CPU (93,7 s de CPU para 240 s de sessão,
+~39% de um núcleo) e não na taxa de quadros.
+
+**A profundidade encosta no limite.** Na arena a profundidade máxima foi 6 com
+limite 8. Aqui foi **8**, com média 6,9 e 37 stalls. O estado maior torna
+`save_state`/`load_state` mais caros, o peer da frente ganha mais fase, e a
+janela de previsão enche. É o dimensionamento sendo exercido de verdade, não com
+folga.
+
+**A acurácia de previsão não mudou: ~93,0%.** Este é o resultado que mais vale a
+pena olhar. A arena, com bots simplórios, deu 93,5%. Um jogo de luta real, com
+um bot que faz combos encadeados de três golpes, meia-lua com quatro direções em
+doze frames e guarda segurada por quase um segundo, dá 93,0%.
+
+A regra "repita o último input confirmado" não é esperta — ela funciona porque
+inputs de jogo de luta são **segurados**, e isso vale igualmente para uma arena
+de brinquedo e para o Last Blade 2. É a hipótese central do rollback, medida
+duas vezes em simulações que não têm nada em comum além do gênero.
+
+**A perda continua quase de graça.** `loss2` produziu 19 e 4 rollbacks em 240 s,
+contra 1 006 do `delay20`. A redundância de oito inputs entrega o input perdido
+no datagrama seguinte, muito antes de ele ser necessário. Perda e latência não
+são o mesmo problema, e o rollback só é sensível ao segundo — igualzinho à
+arena, agora com um emulador no meio.
 
 ## Interpretação
 
@@ -181,7 +264,7 @@ done
 for s in 1 2 3 4 5; do SEED=$s DURATION=60 ./ops/scripts/bench.sh; done
 
 # o mesmo, com SFA3
-just bench sim=sfa3 rom=/caminho/sfa3.zip
+just bench 180 sfa3 /caminho/sfa3.zip
 ```
 
 A pergunta mais interessante que este laboratório está preparado para responder e

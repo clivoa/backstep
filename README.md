@@ -26,7 +26,7 @@ previsões, rollbacks e desyncs.
 | [06 — AWS](docs/06-aws.md) | A infraestrutura, o modelo de ameaça, a chave de sessão |
 | [07 — Dashboard](docs/07-dashboard.md) | Prometheus, Grafana e o que cada painel significa |
 | [08 — Experimentos](docs/08-experimentos.md) | Os cinco perfis, o método, os resultados |
-| [09 — SFA3](docs/09-sfa3.md) | O core FBNeo, o boot determinístico, o commit pinado |
+| [09 — Jogos reais](docs/09-sfa3.md) | O core FBNeo, o boot determinístico, o commit pinado |
 | [10 — Custos](docs/10-custos.md) | Quanto custa uma sessão, e onde o dinheiro some |
 | [11 — Cleanup](docs/11-cleanup.md) | Como destruir tudo e conferir que sumiu |
 | [12 — Troubleshooting](docs/12-troubleshooting.md) | Sintomas, causas e o que olhar primeiro |
@@ -80,26 +80,40 @@ cp terraform/example.tfvars terraform/terraform.tfvars
 $EDITOR terraform/terraform.tfvars     # allowed_cidr = seu IP/32
 curl -s https://checkip.amazonaws.com  # para descobrir o IP
 
-just aws-up sim=arena
-just play   sim=arena
+just aws-up arena
+just play arena
 just collect      # SEMPRE antes do aws-down
 just aws-down
 ```
 
-Para SFA3 é preciso fornecer a própria ROM:
+Para um jogo de arcade é preciso fornecer a própria ROM:
 
 ```bash
 just build-core                                  # compila o FBNeo em container
-just aws-up sim=sfa3 rom=/caminho/sfa3.zip
-just play   sim=sfa3 rom=/caminho/sfa3.zip
+
+# The Last Blade 2 (Neo Geo). Precisa também de neogeo.zip, o BIOS,
+# em artifacts/system/ — é metade do código que roda.
+just check-determinism /caminho/lastbld2.zip     # confira o core antes
+just e2e 90 lastblade2 /caminho/lastbld2.zip
+just aws-up lastblade2 /caminho/lastbld2.zip
+just play lastblade2 /caminho/lastbld2.zip
+
+# Street Fighter Alpha 3 (CPS-2). O set precisa conter sfa3.key.
+just aws-up sfa3 /caminho/sfa3.zip
 ```
+
+O `just check-determinism` não é opcional por preciosismo: o FBNeo, como vem,
+semeia RNG e relógio emulado a partir do relógio do host, e dois peers que
+iniciam em segundos diferentes divergem antes do primeiro input. O `just
+build-core` corrige isso; ver [05 — Determinismo](docs/05-determinismo.md).
 
 ---
 
 ## O que este repositório **não** contém
 
-- **Nenhuma ROM.** `sfa3.zip` é fornecido por você e nunca é versionado,
-  redistribuído nem incluído em qualquer artefato deste repositório.
+- **Nenhuma ROM e nenhum BIOS.** `sfa3.zip`, `lastbld2.zip` e `neogeo.zip` são
+  fornecidos por você e nunca são versionados, redistribuídos nem incluídos em
+  qualquer artefato deste repositório.
 - **Nenhum savestate ou log pessoal.** `artifacts/` está no `.gitignore`.
 - **Nenhuma chave.** A chave de sessão é efêmera, gerada por execução, guardada
   em SSM SecureString e num arquivo local modo 0600, e nunca entra no estado do

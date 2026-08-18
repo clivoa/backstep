@@ -135,7 +135,7 @@ cat <<SUMMARY
 Now, locally:
 
   export ROLLBACK_SESSION_KEY_FILE=${ROOT}/artifacts/session.key
-  just play sim=${SIM}${ROM:+ rom=${ROM}}
+  just play ${SIM}${ROM:+ ${ROM}}
 
 Remember: 'just collect' BEFORE 'just aws-down'.
 SUMMARY

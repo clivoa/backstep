@@ -174,8 +174,8 @@ para deixar espaço para o pior caso de rollback).
 cp terraform/example.tfvars terraform/terraform.tfvars
 $EDITOR terraform/terraform.tfvars    # allowed_cidr = $(curl -s https://checkip.amazonaws.com)/32
 
-just aws-up sim=arena                 # ~3 min: apply, chave, upload, start
-just play   sim=arena                 # joga
+just aws-up arena                 # ~3 min: apply, chave, upload, start
+just play arena                 # joga
 just collect                          # SEMPRE antes de aws-down
 just aws-down                         # destrói tudo
 ```

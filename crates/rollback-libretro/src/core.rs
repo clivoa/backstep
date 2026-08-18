@@ -479,6 +479,12 @@ pub struct LibretroSimulation {
     /// multi-megabyte CPS-2 state at 60 Hz that difference is most of the frame
     /// budget. Invalidated by anything that changes the machine state.
     cached_checksum: std::cell::Cell<Option<u64>>,
+    /// Bytes at the head of the state that [`Simulation::checksum`] ignores.
+    ///
+    /// Zero unless the caller asks for otherwise, because "ignore part of the
+    /// state" is a claim about one specific core's savestate layout and must
+    /// never be a silent default.
+    checksum_skip: usize,
     /// Frames advanced in `Present` mode.
     pub presented_frames: u64,
     pub resimulated_frames: u64,
@@ -489,13 +495,50 @@ impl LibretroSimulation {
         LibretroSimulation {
             core,
             cached_checksum: std::cell::Cell::new(None),
+            checksum_skip: 0,
             presented_frames: 0,
             resimulated_frames: 0,
         }
     }
 
+    /// Ignore the first `bytes` of the savestate when checksumming.
+    ///
+    /// For FBNeo this is [`CHECKSUM_SKIP_BYTES`], and the reasoning is there.
+    /// It is opt-in rather than the default because a skip is only correct for
+    /// the core it was measured against.
+    ///
+    /// # Panics
+    ///
+    /// If the skip would swallow half the state or more. A skip that covers
+    /// everything makes `checksum` a constant, and a constant checksum agrees
+    /// with itself forever -- desync detection would silently become a
+    /// no-op. This is not hypothetical: it is what happened the first time,
+    /// against a test core with a 32-byte state, and the assertion is here so
+    /// that it fails loudly instead.
+    pub fn with_checksum_skip(mut self, bytes: usize) -> Self {
+        let size = self.core.state_size;
+        assert!(
+            bytes * 2 < size,
+            "a checksum skip of {bytes} bytes leaves nothing of a {size}-byte state to compare"
+        );
+        self.checksum_skip = bytes;
+        self.cached_checksum.set(None);
+        self
+    }
+
     pub fn core(&self) -> &LibretroCore {
         &self.core
+    }
+
+    /// Power-cycle the emulated board.
+    ///
+    /// Used by the boot-calibration tools to put a fresh machine in front of
+    /// each candidate timing, and by nothing on the session path -- a session
+    /// resets once, before the first frame, so that both peers start from the
+    /// same machine regardless of what ran before.
+    pub fn reset_machine(&mut self) {
+        self.core.reset();
+        self.cached_checksum.set(None);
     }
 
     /// The most recent frame the core produced in `Present` mode.
@@ -522,11 +565,52 @@ impl LibretroSimulation {
             panic!("{}", CoreError::SerializeFailed(size));
         }
         let mut h = Fnv1a::new();
-        h.write(&buffer);
+        h.write(&buffer[self.checksum_skip..]);
         self.cached_checksum.set(Some(h.finish()));
         buffer
     }
 }
+
+/// Bytes at the head of a libretro savestate that the desync checksum ignores.
+///
+/// # Why a checksum would otherwise lie
+///
+/// Rollback needs `retro_unserialize` to restore everything `retro_run` will go
+/// on to read. FBNeo very nearly does: `examples/check-rollback-safety.rs` saves
+/// a state, runs on, restores, replays the identical inputs and compares. Out of
+/// **415 155 bytes**, save -> load -> save disagrees on **16 to 21**, always in
+/// four four-byte fields at offsets 537, 829, 1413 and 1705. They are not
+/// restored, they are recomputed.
+///
+/// The question that matters is whether that spreads. It does not:
+///
+/// ```text
+/// probe at frame 2100, 300 replayed frames of a live match
+///   -> 18 bytes differ, highest offset 1761
+/// probe at frame 2500 -> 23 bytes differ, highest offset 1757
+/// probe at frame 2900 -> 17 bytes differ, highest offset 1499
+/// ```
+///
+/// Five seconds of re-simulated fighting and the difference is still a couple of
+/// dozen bytes below offset 1800. It never reaches the 413 KB of work RAM,
+/// video RAM and palette where the actual game lives -- this is sound-chip and
+/// timer bookkeeping, which the 68000 does not read back.
+///
+/// So the machine *is* rollback-safe and the checksum was not. Hashing the
+/// whole blob reported a desync on the first rollback of every session, which is
+/// a false alarm that makes the desync detector worthless on this core.
+///
+/// # What this costs
+///
+/// A genuine divergence confined to these first 2 KB would go unnoticed. That is
+/// the trade, stated plainly. It is worth taking because the alternative is a
+/// detector that fires every time, and because everything the players can
+/// observe lives past this boundary.
+///
+/// 2048 is the measured maximum (1761) rounded up with room to spare.
+/// `check-rollback-safety` fails if instability ever reaches this offset, so the
+/// claim is checkable rather than a hope.
+pub const CHECKSUM_SKIP_BYTES: usize = 2048;
 
 impl Simulation for LibretroSimulation {
     fn save_state(&self) -> Vec<u8> {

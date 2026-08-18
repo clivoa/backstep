@@ -20,6 +20,22 @@ PORT="${PORT:-7100}"
 LOG_DIR="${LOG_DIR:-artifacts/e2e/logs}"
 REPORT_DIR="${REPORT_DIR:-artifacts/e2e/report}"
 SEED="${SEED:-4242}"
+CORE="${CORE:-${ROOT}/cores/fbneo_libretro.so}"
+ROM="${ROM:-}"
+BIOS="${BIOS:-${ROOT}/artifacts/system/neogeo.zip}"
+
+# Emulated simulations need a core and a ROM, and each peer needs its *own*
+# system directory: FBNeo writes NVRAM there, and two peers sharing one
+# directory would race to clear and rewrite the same file. The BIOS is copied
+# into both, identical, because it is hashed into the handshake.
+SIM_ARGS=()
+if [[ "${SIM}" != "arena" ]]; then
+    if [[ -z "${ROM}" ]]; then
+        echo "!!! SIM=${SIM} needs a ROM: ROM=/path/to/game.zip $0" >&2
+        exit 2
+    fi
+    SIM_ARGS=(--core "${CORE}" --rom "${ROM}")
+fi
 
 BOT="${ROOT}/target/release/rollback-bot"
 REPORT="${ROOT}/target/release/rollback-report"
@@ -44,10 +60,22 @@ for profile in ${PROFILES}; do
     host_log="$(mktemp)"
     client_log="$(mktemp)"
 
+    p1_sys="artifacts/e2e/sys-p1"
+    p2_sys="artifacts/e2e/sys-p2"
+    if [[ "${SIM}" != "arena" ]]; then
+        rm -rf "${p1_sys}" "${p2_sys}"
+        mkdir -p "${p1_sys}" "${p2_sys}"
+        if [[ -f "${BIOS}" ]]; then
+            cp "${BIOS}" "${p1_sys}/"
+            cp "${BIOS}" "${p2_sys}/"
+        fi
+    fi
+
     # P2 binds and waits; P1 dials it. Same arrangement as the real lab, with
     # the EC2 instance replaced by a second local process.
     "${BOT}" \
         --sim "${SIM}" --player p2 \
+        "${SIM_ARGS[@]+"${SIM_ARGS[@]}"}" --system-dir "${p2_sys}" \
         --bind "127.0.0.1:${PORT}" \
         --profile "${profile}" --seed "${SEED}" \
         --duration "${DURATION}" \
@@ -62,6 +90,7 @@ for profile in ${PROFILES}; do
 
     "${BOT}" \
         --sim "${SIM}" --player p1 \
+        "${SIM_ARGS[@]+"${SIM_ARGS[@]}"}" --system-dir "${p1_sys}" \
         --bind "127.0.0.1:0" \
         --peer "127.0.0.1:${PORT}" \
         --profile "${profile}" --seed "${SEED}" \

@@ -3,9 +3,14 @@
 #   just               list the recipes
 #   just test          the full gate: fmt, clippy, tests, shellcheck, terraform
 #   just local-up      Prometheus + Grafana on loopback
-#   just aws-up sim=arena|sfa3 [rom=...]
-#   just play sim=arena|sfa3 [rom=...]
+#   just aws-up <sim> [rom]     sim = arena | sfa3 | lastblade2
+#   just play   <sim> [rom]
 #   just bench
+#
+# Recipe arguments are POSITIONAL. `just play sim=sfa3` does not set `sim` --
+# just takes everything after the recipe name as a positional value, so that
+# passes the literal string "sim=sfa3". Use `just play sfa3 /path/rom.zip`.
+# `just --list` shows each recipe's parameters and defaults.
 #   just collect       ALWAYS before aws-down
 #   just aws-down
 #
@@ -68,8 +73,11 @@ tf-check:
     terraform -chdir=terraform validate
 
 # Two real processes over a real socket, every profile, no confirmed desync.
-e2e duration="20":
-    DURATION={{duration}} ops/scripts/e2e-local.sh
+#
+# The emulated games need a longer duration than the arena: their boot script
+# spends the first ~33 seconds walking the machine through its menus.
+e2e duration="20" sim="arena" rom="":
+    DURATION={{duration}} SIM={{sim}} ROM={{rom}} ops/scripts/e2e-local.sh
 
 # --- build -----------------------------------------------------------------
 
@@ -85,6 +93,31 @@ build-core:
 inspect-core rom:
     cargo run --release -p rollback-libretro --example inspect-core -- \
         "{{core}}" "{{rom}}" artifacts/system
+
+# Does the core produce the same state twice, in two processes, seconds apart?
+# If not, every session will desync and it will not be the rollback's fault.
+# See docker/fbneo/determinism.md.
+check-determinism rom game="lastblade2":
+    ops/scripts/check-determinism.sh "{{rom}}" "{{game}}"
+
+# Does a rollback change anything the game can see? Saves a state, runs on,
+# restores, replays the same inputs, and compares. Answers the question the
+# desync counter cannot: whether a desync verdict is trustworthy at all.
+check-rollback-safety rom game="lastblade2" from="500" to="3200" step="150":
+    cargo run --release -p rollback-libretro --example check-rollback-safety -- \
+        "{{core}}" "{{rom}}" artifacts/system "{{game}}" "{{from}}" "{{to}}" "{{step}}"
+
+# Run the machine and dump frames, to calibrate a boot macro by looking at it
+# rather than guessing. Writes PPMs; montage them into a contact sheet.
+probe-boot rom game="lastblade2" frames="1800" every="30" out="artifacts/probe":
+    rm -rf "{{out}}" && mkdir -p "{{out}}"
+    PROBE_SCRIPT="{{game}}" cargo run --release -p rollback-libretro --example probe-boot -- \
+        "{{core}}" "{{rom}}" artifacts/system "{{out}}" "{{frames}}" "{{every}}"
+    @command -v magick >/dev/null && \
+        magick montage "{{out}}"/*.ppm -tile 6x -geometry +2+2 -background '#222' \
+            -fill white -pointsize 14 -label '%f' "{{out}}/contact-sheet.png" && \
+        echo "    contact sheet: {{out}}/contact-sheet.png" || \
+        echo "    (install ImageMagick for a contact sheet; raw PPMs are in {{out}})"
 
 # --- local observability ---------------------------------------------------
 
@@ -134,9 +167,9 @@ play sim="arena" rom="" profile="natural" peer="":
         peer="$(terraform -chdir=terraform output -raw peer_address)"
     fi
     args=(--sim {{sim}} --peer "$peer" --profile {{profile}} --log-dir "{{logs}}")
-    if [[ "{{sim}}" == "sfa3" ]]; then
+    if [[ "{{sim}}" != "arena" ]]; then
         if [[ -z "{{rom}}" ]]; then
-            echo "sim=sfa3 needs rom=/path/to/sfa3.zip" >&2
+            echo "sim={{sim}} needs rom=/path/to/game.zip" >&2
             exit 2
         fi
         args+=(--core "{{core}}" --rom "{{rom}}")

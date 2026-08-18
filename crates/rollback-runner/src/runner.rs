@@ -160,12 +160,23 @@ impl<S: Simulation> SessionRunner<S> {
             return Ok(outcome);
         }
 
-        // 2. Stalled? Do no local work at all.
+        // 2. Stalled? Do no local work at all -- but still check that the peer
+        //    is alive.
+        //
+        //    The liveness check used to live only at the end of this function,
+        //    after the early return below. A peer whose partner died therefore
+        //    stalled forever: it had nothing to simulate, so it never reached
+        //    the check that would have told it why. Observed in the wild as a
+        //    process sitting at 20 735 stalls on a frame it was never going to
+        //    get, long after the other side had exited.
         if self.session.would_stall() {
             let waiting_for = self.session.remote_confirmed_through() + 1;
             let _ = self.session.advance()?; // records the stall and the event
             self.drain_events()?;
             self.publish()?;
+            if let Some(outcome) = self.check_peer_liveness()? {
+                return Ok(outcome);
+            }
             return Ok(StepOutcome::Stalled { waiting_for });
         }
 
@@ -196,19 +207,33 @@ impl<S: Simulation> SessionRunner<S> {
         self.drain_events()?;
         self.publish()?;
 
-        if let Some(elapsed) = self.transport.ms_since_authenticated() {
-            if let Err(e) = self.session.check_peer_timeout(elapsed) {
-                self.finish_with(EndReason::PeerTimeout, DisconnectReason::Timeout)?;
-                return match e {
-                    SessionError::PeerTimeout { .. } => {
-                        Ok(StepOutcome::Ended(EndReason::PeerTimeout))
-                    }
-                    other => Err(other.into()),
-                };
-            }
+        if let Some(ended) = self.check_peer_liveness()? {
+            return Ok(ended);
         }
 
         Ok(outcome)
+    }
+
+    /// End the session if the peer has gone quiet for too long.
+    ///
+    /// Returns `Some` when the session ended. Called from both the stalled and
+    /// the advancing paths, because a stalled peer is exactly the one that most
+    /// needs to notice.
+    fn check_peer_liveness(&mut self) -> Result<Option<StepOutcome>, RunnerError> {
+        let Some(elapsed) = self.transport.ms_since_authenticated() else {
+            return Ok(None);
+        };
+        match self.session.check_peer_timeout(elapsed) {
+            Ok(()) => Ok(None),
+            Err(SessionError::PeerTimeout { .. }) => {
+                self.finish_with(EndReason::PeerTimeout, DisconnectReason::Timeout)?;
+                Ok(Some(StepOutcome::Ended(EndReason::PeerTimeout)))
+            }
+            Err(other) => {
+                self.finish_with(EndReason::PeerTimeout, DisconnectReason::Timeout)?;
+                Err(other.into())
+            }
+        }
     }
 
     /// Receive, authenticate and apply everything waiting on the socket.
@@ -529,6 +554,83 @@ mod tests {
         assert_eq!(runner.session().end_reason(), None);
 
         runner.finish("stalled").unwrap();
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_peer_that_dies_mid_session_times_out_while_stalled() {
+        // The bug this guards against: the liveness check lived after the
+        // early return in the stalled branch, so a peer with nothing to
+        // simulate never got to notice its partner was gone. It sat there
+        // stalling until something killed it.
+        let dir = temp_dir("peer-death");
+        let auth = Authenticator::from_passphrase("runner-test");
+        let bind = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+        let mut a = UdpTransport::bind(bind, auth.clone(), NetworkProfile::NATURAL).unwrap();
+        let mut b = UdpTransport::bind(bind, auth, NetworkProfile::NATURAL).unwrap();
+        a.set_peer(b.local_addr().unwrap());
+        b.set_peer(a.local_addr().unwrap());
+
+        let short_timeout = |player, dir: &Path| RunnerConfig {
+            session: SessionConfig {
+                peer_timeout_ms: 300,
+                ..Default::default()
+            },
+            ..config(player, dir)
+        };
+        let mut alive = SessionRunner::new(
+            CounterSim::default(),
+            a,
+            short_timeout(PlayerHandle::P1, &dir),
+        )
+        .unwrap();
+        let mut doomed = SessionRunner::new(
+            CounterSim::default(),
+            b,
+            short_timeout(PlayerHandle::P2, &dir),
+        )
+        .unwrap();
+
+        // Talk for a while, so a datagram has authenticated and the timeout
+        // clock is meaningfully running.
+        for _ in 0..40 {
+            alive.step(PlayerInput(1)).unwrap();
+            doomed.step(PlayerInput(2)).unwrap();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            alive.session().confirmed_frame() > 0,
+            "the link must be live"
+        );
+
+        // The peer goes away *without saying goodbye*. Calling `finish` here
+        // would send a Disconnect, which is the polite path and not the one
+        // under test: this is the process that got killed, lost power, or had
+        // its route disappear.
+        drop(doomed);
+
+        let mut ended = None;
+        let mut stalled = false;
+        for _ in 0..400 {
+            match alive.step(PlayerInput(1)).unwrap() {
+                StepOutcome::Stalled { .. } => stalled = true,
+                StepOutcome::Ended(reason) => {
+                    ended = Some(reason);
+                    break;
+                }
+                StepOutcome::Advanced { .. } => {}
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        assert!(stalled, "it must fill the prediction window first");
+        assert_eq!(
+            ended,
+            Some(EndReason::PeerTimeout),
+            "a stalled peer must still notice the silence and end the session"
+        );
+
+        alive.finish("timeout").unwrap();
         std::fs::remove_dir_all(dir).ok();
     }
 

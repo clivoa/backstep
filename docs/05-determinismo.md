@@ -14,8 +14,9 @@ de o replay reproduzir exatamente o que o replay original teria produzido.
 
 ## As regras que a arena obedece
 
-O SFA3 ganha determinismo de graça: o emulador é uma máquina de estados
-determinística por construção. Código nativo precisa impor cada regra à mão.
+A arena é código nativo e precisa impor cada regra à mão. (O emulador **não**
+ganha determinismo de graça, ao contrário do que este documento afirmava antes
+de a gente medir — ver [O emulador não era determinístico](#o-emulador-não-era-determinístico).)
 
 ### 1. Nenhum ponto flutuante
 
@@ -82,17 +83,145 @@ apresentação ficam **fora** do snapshot e **fora** do checksum. `presented_fra
 existe em `Arena` mas não é serializado nem hasheado, porque conta frames de
 *tela* — que legitimamente diferem entre os peers.
 
-## As regras que o SFA3 obriga
+## As regras que o emulador obriga
 
-O emulador é determinístico. O que **não** é determinístico é o ambiente ao redor
-dele:
+### O emulador não era determinístico
+
+Esta seção começou como uma frase confiante — "o emulador é determinístico por
+construção, o problema é só o ambiente ao redor" — e essa frase estava errada.
+Vale contar como ela caiu, porque é o resultado mais instrutivo do laboratório.
+
+O sintoma apareceu ao calibrar o script de boot do Last Blade 2: telas iguais
+chegavam em frames diferentes a cada execução. Como o script é puramente
+temporal, isso o quebrava de forma irreprodutível. O teste que decidiu:
+
+```
+# duas execuções, segundos diferentes
+checksum f000300 e5467290974af991
+checksum f000300 eaf4e5314c60aeed     <- divergiu
+
+# duas execuções lançadas no MESMO segundo de relógio
+checksum f000300 59c82db8a4071bd1
+checksum f000300 59c82db8a4071bd1     <- idênticas
+```
+
+`time(NULL)` tem granularidade de um segundo. Duas execuções que caem no mesmo
+segundo concordarem, e em segundos diferentes discordarem, é a assinatura
+inequívoca de uma dependência do relógio da máquina.
+
+Eram duas, ambas em `src/burn/burn.cpp` do FBNeo:
+
+1. `BurnRandomInit()` semeia o RNG dos drivers com `time(NULL)`.
+2. `BurnGetLocalTime()` devolve o calendário do host — e o Neo Geo tem um chip
+   de relógio de calendário, o µPD4990A, que o BIOS lê durante o boot
+   (`src/burn/drv/neogeo/neo_upd4990a.cpp:54`).
+
+O conserto está em `docker/fbneo/determinism.md`: o FBNeo já resolve as duas
+quando `kNetGame` está ligado, e o build do laboratório liga. O `Dockerfile`
+falha ruidosamente se a linha que ele altera deixar de existir.
+
+**A lição não é "FBNeo tem um bug".** É que "o emulador é determinístico" é uma
+afirmação sobre o emulador *e sobre como ele é construído e configurado*, e a
+única forma de saber é medir. Por isso existe:
+
+```bash
+just check-determinism /caminho/lastbld2.zip
+```
+
+Ele roda o core duas vezes, em processos separados, com um `sleep` deliberado
+entre eles, e compara os checksums. O `sleep` é o teste: sem ele, duas execuções
+caem no mesmo segundo e um core quebrado passa.
 
 ### NVRAM e configurações por jogo
 
-FBNeo lê NVRAM e settings do diretório de sistema. Um arquivo de NVRAM antigo em
-um dos peers é desync no frame zero, antes de qualquer input. Por isso o host
-expõe `set_directories`, e `just aws-up` aponta os dois lados para um diretório
-limpo. Ver [09 — SFA3](09-sfa3.md).
+FBNeo lê NVRAM e settings do diretório de sistema, e **escreve** ao descarregar.
+No Neo Geo o arquivo é `<system>/fbneo/<romset>.fs`, o memory card, e ele guarda
+créditos entre execuções.
+
+Isso não é teórico: um peer que já rodou antes inicia com créditos inseridos,
+chega à tela de título num frame diferente de um peer que nunca rodou, e os dois
+scripts de boot apertam Start em momentos diferentes do loop de atração. O
+resultado são duas máquinas em menus diferentes — que o rollback reporta,
+corretamente, como desync.
+
+Por isso `rollback_libretro::clear_persistent_state` apaga `.fs`, `.nv` e `.hi`
+do jogo antes de carregar, dos dois lados, em toda sessão.
+
+### O checksum estava medindo a coisa errada
+
+Depois de tudo acima, o emulador ficou reprodutível **entre processos** — e as
+sessões continuaram desincronizando, sempre no primeiro rollback. Zero desyncs
+no perfil `natural` (que não faz rollback nenhum) e desync garantido em
+`delay20` (que faz).
+
+Rollback precisa de uma propriedade que "determinístico" não cobre: que
+`retro_unserialize` restaure **tudo** que `retro_run` vai voltar a ler. Um core
+pode ser perfeitamente reprodutível a partir de um boot frio e ainda guardar
+estado fora do savestate.
+
+A ferramenta que responde isso é `just check-rollback-safety`:
+
+```
+salva o estado no frame N
+roda K frames com inputs I      -> checksum A     (peer que não voltou)
+restaura, roda os mesmos K      -> checksum B     (peer que voltou)
+A == B ?
+```
+
+O resultado, no Last Blade 2:
+
+```
+save -> load -> save discorda em 16 a 21 bytes de 415 155,
+sempre em quatro campos de 4 bytes nos offsets 537, 829, 1413 e 1705.
+```
+
+E a pergunta que decide tudo — isso se espalha? Não:
+
+```
+probe no frame 2100, 300 frames re-simulados de luta
+  -> 18 bytes diferentes, offset máximo 1761
+probe no frame 2500 -> 23 bytes, offset máximo 1757
+probe no frame 2900 -> 17 bytes, offset máximo 1499
+```
+
+Cinco segundos de luta re-simulada e a diferença continua sendo algumas dezenas
+de bytes abaixo do offset 1800. Ela **nunca alcança** os 413 KB de RAM de
+trabalho, RAM de vídeo e paleta onde o jogo de fato vive. São contadores de
+timer e do chip de som, que o 68000 não lê de volta.
+
+Ou seja: a máquina *era* segura para rollback; o checksum é que não era. Hashear
+o blob inteiro reportava desync no primeiro rollback de toda sessão — um falso
+positivo que torna o detector inútil justamente no core em que ele mais importa.
+
+`CHECKSUM_SKIP_BYTES = 2048` é o conserto: o checksum ignora o prefixo instável.
+O preço, dito com todas as letras, é que uma divergência real confinada a esses
+2 KB passaria despercebida. Vale a pena porque a alternativa é um detector que
+dispara sempre, e porque tudo que os jogadores conseguem observar vive depois
+dessa fronteira. O `check-rollback-safety` **falha** se a instabilidade alcançar
+o limite, então a afirmação é verificável e não uma esperança.
+
+### O peer travado nunca percebia que o outro morreu
+
+Achado de tabela, não de teoria: numa rodada com perda, um peer ficou vivo por
+minutos acumulando 20 735 stalls num frame que nunca ia chegar.
+
+A causa estava no `SessionRunner::step`: a checagem de liveness ficava no fim da
+função, e o caminho "estou travado" fazia `return` antes disso. O peer que mais
+precisava notar o silêncio era exatamente o único que não olhava.
+
+Corrigido extraindo `check_peer_liveness` e chamando nos dois caminhos, com
+regressão em `a_peer_that_dies_mid_session_times_out_while_stalled` — que mata o
+peer *sem* mandar Disconnect, porque o caminho educado já funcionava.
+
+### O BIOS entra no hash
+
+Um jogo de Neo Geo é metade do código que roda; a outra metade é o `neogeo.zip`.
+Dois peers com revisões diferentes de BIOS passariam pelo handshake e
+divergiriam durante o boot, antes de qualquer input.
+
+`app::hash_rom_set` hasheia ROM **e** BIOS, com separação de domínio, no mesmo
+campo `rom_hash` do handshake. Um BIOS diferente agora é recusado na porta com
+"ROM hash mismatch", que é uma mensagem chata mas honesta.
 
 ### Opções do core
 
@@ -105,7 +234,13 @@ que o core resolver usar como padrão naquela máquina:
 | `fbneo-frameskip` | `0` | Frameskip faria `retro_run` avançar um número variável de frames; rollback assume exatamente um |
 | `fbneo-cpu-speed-adjust` | `100` | Muda o orçamento de ciclos por frame |
 | `fbneo-neogeo-mode` | `DIPSWITCH` | Fixa a região emulada, que muda a taxa de frames |
-| `fbneo-diagnostic-input` | `Hold Start` | Evita que uma combinação acidental abra o menu de serviço |
+| `fbneo-diagnostic-input` | `Disabled` | O menu de serviço não pode ser aberto por acidente |
+
+A última linha era `Hold Start`, e trocá-la foi uma tentativa de explicar por que
+o script de boot não conseguia iniciar a partida. **Não era a causa** — a causa
+real está em [09](09-sfa3.md): a placa quer o Start *segurado* por ~75 frames.
+Mesmo assim `Disabled` é o valor certo: o script segura Start por 120 frames, e
+não faz sentido deixar um gesto de diagnóstico apontado para exatamente isso.
 
 ### O hash do core e da ROM
 

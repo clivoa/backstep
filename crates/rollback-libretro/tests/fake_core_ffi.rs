@@ -169,6 +169,46 @@ fn a_state_restores_exactly() {
 }
 
 #[test]
+fn a_checksum_skip_that_swallows_the_state_is_refused() {
+    // The FBNeo skip is 2048 bytes; this core's whole state is 32. Applying it
+    // blindly made `checksum` hash an empty slice, so every state hashed to the
+    // same value and desync detection quietly became a no-op that could never
+    // fire. A constant checksum is worse than no checksum, because it looks
+    // like agreement.
+    let _guard = serialised();
+    let mut core = LibretroCore::load(fake_core_path()).unwrap();
+    core.load_game(&PathBuf::from("/dev/null")).unwrap();
+    let state_size = core.state_size();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        LibretroSimulation::new(core)
+            .with_checksum_skip(rollback_libretro::core::CHECKSUM_SKIP_BYTES)
+    }));
+    assert!(
+        result.is_err(),
+        "a {}-byte skip must be refused on a {state_size}-byte state",
+        rollback_libretro::core::CHECKSUM_SKIP_BYTES
+    );
+}
+
+#[test]
+fn a_modest_checksum_skip_still_distinguishes_states() {
+    let _guard = serialised();
+    let mut sim = load().with_checksum_skip(8);
+    let before = sim.checksum();
+    for _ in 0..20 {
+        sim.advance_frame(
+            [press(&[Button::Right]), press(&[Button::Left])],
+            OutputMode::Present,
+        );
+    }
+    assert_ne!(
+        sim.checksum(),
+        before,
+        "skipping a prefix must not stop the checksum from noticing the rest"
+    );
+}
+
+#[test]
 fn a_wrong_sized_state_is_refused() {
     let _guard = serialised();
     let mut sim = load();

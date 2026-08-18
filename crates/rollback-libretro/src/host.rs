@@ -65,6 +65,13 @@ pub struct HostState {
     /// Capped, because a core that logs per frame would otherwise grow this
     /// without bound over a 180-second session.
     pub log_lines: Vec<(u32, String)>,
+    /// How many times the core asked for each RetroPad id, per port.
+    ///
+    /// A button the core never polls cannot possibly do anything, which turns
+    /// "the game ignores Start" from a guess into a measurement.
+    pub polled: [[u64; 16]; 2],
+    /// How many times the core saw each id *pressed*, per port.
+    pub polled_pressed: [[u64; 16]; 2],
 }
 
 /// How many core log lines to keep. Load failures are reported in the first
@@ -142,6 +149,8 @@ pub fn reset_state() {
         h.unhandled_environment.clear();
         h.messages.clear();
         h.log_lines.clear();
+        h.polled = [[0; 16]; 2];
+        h.polled_pressed = [[0; 16]; 2];
     });
 }
 
@@ -527,16 +536,36 @@ pub unsafe extern "C" fn input_state(
     if device != RETRO_DEVICE_JOYPAD || port > 1 {
         return 0;
     }
-    let mask = with_host(|h| h.inputs[port as usize]);
     if id >= 16 {
         return 0;
     }
-    i16::from(mask & (1 << id) != 0)
+    with_host(|h| {
+        let pressed = h.inputs[port as usize] & (1 << id) != 0;
+        h.polled[port as usize][id as usize] += 1;
+        if pressed {
+            h.polled_pressed[port as usize][id as usize] += 1;
+        }
+        i16::from(pressed)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The host state is a process-wide `static`, because libretro callbacks
+    /// have nowhere else to live. That is fine in production -- a process hosts
+    /// one core -- but `cargo test` runs these in parallel threads, and two of
+    /// them stamping on `frames_discarded` produced a failure that only
+    /// appeared when the suite got slow enough to interleave differently.
+    ///
+    /// Same fix as `tests/fake_core_ffi.rs`: take a lock, and poison-proof it
+    /// so one failing test does not cascade into the rest.
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn serialised() -> std::sync::MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn pixel_conversion_preserves_the_extremes() {
@@ -556,6 +585,7 @@ mod tests {
 
     #[test]
     fn input_state_reads_the_requested_port() {
+        let _guard = serialised();
         with_host(|h| h.inputs = [0b0000_0001, 0b0000_1000]);
         unsafe {
             assert_eq!(input_state(0, RETRO_DEVICE_JOYPAD, 0, 0), 1);
@@ -571,6 +601,7 @@ mod tests {
 
     #[test]
     fn the_environment_rejects_an_unsupported_pixel_format() {
+        let _guard = serialised();
         let mut format: c_uint = 99;
         let ok = unsafe {
             environment(
@@ -583,6 +614,7 @@ mod tests {
 
     #[test]
     fn the_environment_survives_null_pointers() {
+        let _guard = serialised();
         for cmd in [
             RETRO_ENVIRONMENT_SET_PIXEL_FORMAT,
             RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY,
@@ -600,6 +632,7 @@ mod tests {
 
     #[test]
     fn an_unknown_environment_command_is_refused_and_recorded() {
+        let _guard = serialised();
         reset_state();
         assert!(!unsafe { environment(9_999, std::ptr::null_mut()) });
         with_host(|h| assert!(h.unhandled_environment.contains(&9_999)));
@@ -608,6 +641,7 @@ mod tests {
 
     #[test]
     fn discarded_output_is_counted_and_not_stored() {
+        let _guard = serialised();
         reset_state();
         with_host(|h| h.discard_output = true);
         unsafe {

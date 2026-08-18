@@ -134,6 +134,7 @@ impl PeerIdentity {
         w.u8(match self.simulation {
             SimulationKind::Arena => 0,
             SimulationKind::Sfa3 => 1,
+            SimulationKind::LastBlade2 => 2,
         });
         w.u8(self.player.index() as u8);
         w.bytes(&self.app_commit);
@@ -148,6 +149,7 @@ impl PeerIdentity {
         let simulation = match r.u8()? {
             0 => SimulationKind::Arena,
             1 => SimulationKind::Sfa3,
+            2 => SimulationKind::LastBlade2,
             value => {
                 return Err(WireError::BadEnum {
                     field: "simulation",

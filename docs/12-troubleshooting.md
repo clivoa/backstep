@@ -199,13 +199,59 @@ Para ver tudo que o core disse, inclusive em quais caminhos ele procurou cada
 romset:
 
 ```bash
-just inspect-core rom=/caminho/do.zip
+just inspect-core /caminho/do.zip
 ```
 
 Isso imprime o log completo do core, os comandos de ambiente que ele pediu, e o
 tamanho do estado. Para conferir arquivo por arquivo, compare os CRCs do seu zip
 com o `RomDesc[]` do driver no FBNeo (`src/burn/drv/capcom/d_cps2.cpp` para
 CPS-2, `src/burn/drv/neogeo/d_neogeo.cpp` para Neo Geo).
+
+## Desync no começo de toda sessão com emulador
+
+Se a arena nunca desincroniza e o jogo emulado sempre desincroniza — em
+particular **antes de qualquer input do jogador** — o problema não está no
+rollback. Está no core.
+
+```bash
+just check-determinism /caminho/lastbld2.zip
+```
+
+Isso roda o core duas vezes, em processos separados, com uma pausa deliberada
+entre eles, e compara o estado da máquina. A pausa é o teste: `time(NULL)` tem
+granularidade de um segundo, e duas execuções dentro do mesmo segundo concordam
+mesmo com um core dependente do relógio.
+
+Se falhar, o core provavelmente não foi construído por `just build-core`:
+
+```bash
+grep patches cores/fbneo-commit.txt     # esperado: patches=kNetGame=1
+```
+
+Contexto completo em `docker/fbneo/determinism.md` e em
+[05 — Determinismo](05-determinismo.md).
+
+Outras causas de desync logo no início, em ordem de frequência:
+
+| Sintoma | Causa | Correção |
+|---|---|---|
+| desync no boot, core correto | NVRAM diferente entre peers | é apagada automaticamente; confira se os dois peers imprimiram `cleared stale machine state` |
+| `ROM hash mismatch` num jogo de Neo Geo | `neogeo.zip` diferente | o BIOS entra no hash; use o mesmo arquivo dos dois lados |
+| desync no meio de um menu | script de boot fora da janela | `just probe-boot` e compare com [09](09-sfa3.md) |
+
+## O script de boot termina fora da partida
+
+O sintoma é uma sessão que roda, mede tudo, não desincroniza — e mostra a tela
+de atração em vez de uma luta. O script é cego: ele aperta os botões nos frames
+que mandaram e não verifica nada.
+
+```bash
+just probe-boot /caminho/lastbld2.zip lastblade2
+```
+
+Abra `artifacts/probe/contact-sheet.png` e veja em que tela cada frame caiu. As
+janelas medidas estão em [09 — Jogos reais](09-sfa3.md); a do Last Blade 2 tem
+35 frames, então é fácil errar por pouco.
 
 ## O log do core não aparece
 
