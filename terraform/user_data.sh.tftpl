@@ -19,9 +19,27 @@ AUTO_SHUTDOWN_HOURS="${auto_shutdown_hours}"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-    awscli \
     ca-certificates \
+    curl \
     unzip
+
+# The AWS CLI comes from AWS, not from apt.
+#
+# Ubuntu 24.04 (noble) dropped the `awscli` package entirely -- `apt-get install
+# awscli` fails with "has no installation candidate", which under `set -e` kills
+# this whole script on its first command and leaves an instance that boots,
+# answers SSM, and has nothing installed. That failure is silent from the
+# outside: the instance reports Online while /opt/rollback does not exist.
+#
+# The official v2 bundle is also the better answer: it is self-contained, and
+# the same installer works on any distribution the lab might move to.
+if ! command -v aws >/dev/null; then
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+    unzip -q /tmp/awscliv2.zip -d /tmp
+    /tmp/aws/install
+    rm -rf /tmp/aws /tmp/awscliv2.zip
+fi
+aws --version
 
 install -d -m 0755 /opt/rollback/bin
 install -d -m 0755 /opt/rollback/artifacts/logs

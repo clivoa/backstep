@@ -8,9 +8,9 @@ Mantido atualizado a cada rodada de experimentos.
 
 ---
 
-## Ambiente de todas as medições até aqui
+## Os dois ambientes de medição
 
-**Uma máquina. Dois processos. `127.0.0.1`.**
+### A. Bancada local — uma máquina, dois processos, `127.0.0.1`
 
 | | |
 |---|---|
@@ -20,8 +20,19 @@ Mantido atualizado a cada rodada de experimentos.
 | Binário | o mesmo executável nos dois lados |
 | CPU / SO / compilador | idênticos nos dois lados, por construção |
 
-Tudo que aparece nas tabelas de [08 — Experimentos](08-experimentos.md) foi
-medido assim.
+Os cinco perfis de rede de [08 — Experimentos](08-experimentos.md) foram medidos
+assim.
+
+### B. Sessão real — Madri ↔ Frankfurt
+
+| | P1 | P2 |
+|---|---|---|
+| Onde | Madri, Espanha | Frankfurt, `eu-central-1` |
+| Máquina | Arch Linux, Intel Core i7-10750H | Ubuntu 24.04, EC2 `t3.small` |
+| Rede | Internet, sem degradação sintética | idem |
+
+Duas sessões: The Last Blade 2 por 300 s e a arena por 150 s. Resultados
+completos em [08 — Experimentos](08-experimentos.md#a-sessão-real-madri--frankfurt).
 
 ---
 
@@ -43,6 +54,11 @@ apareceram.
   core em dois processos separados, em segundos de relógio diferentes.
 - **Segurança do savestate para rollback.** `just check-rollback-safety` prova
   que uma re-simulação de 300 frames não altera nada que o jogo consiga observar.
+- **Determinismo entre máquinas diferentes.** 449 comparações de checksum
+  concordando entre um i7-10750H rodando Arch e uma EC2 Ubuntu 24.04, nas duas
+  simulações, com zero desyncs.
+- **Sessão pela Internet real**, com a latência, a estabilidade e a perda que o
+  caminho Madri–Frankfurt de fato tem.
 
 ---
 
@@ -50,39 +66,33 @@ apareceram.
 
 Em ordem de importância.
 
-### 1. Determinismo entre máquinas diferentes — sem nenhuma evidência
+### ~~1. Determinismo entre máquinas diferentes~~ — FECHADO
 
-Este é o buraco mais sério, porque é exatamente o que boa parte do projeto foi
-desenhada para garantir:
-
-- ponto fixo Q23.8 em vez de ponto flutuante
-- proibição de `HashMap` na simulação
-- FNV-1a próprio em vez de `DefaultHasher`
-- `overflow-checks` ligado também em release
-- nada derivado de endereço de memória
-
-**Todas essas regras existem para dois hosts com CPUs, compiladores e sistemas
-diferentes concordarem bit a bit.** Rodar dois processos do mesmo binário na
-mesma CPU não testa nenhuma delas — o resultado seria idêntico mesmo se todas
+Era o buraco mais sério: ponto fixo Q23.8, proibição de `HashMap`, FNV-1a
+próprio, `overflow-checks` em release e nenhum valor derivado de endereço existem
+todos para dois hosts diferentes concordarem bit a bit — e dois processos do
+mesmo binário na mesma CPU teriam concordado mesmo se todas essas regras
 estivessem erradas.
 
-O teste mais barato e mais informativo do projeto inteiro é, portanto, **rodar os
-dois peers em máquinas diferentes**, nem que seja na mesma sala.
+Fechado pela sessão Madri ↔ Frankfurt: **449 comparações de checksum
+concordando**, entre CPUs, sistemas e libc diferentes, nas duas simulações. A
+arena conta em separado, porque é o código que nós escrevemos.
 
-### 2. Nenhuma sessão entre localizações diferentes
+### ~~2. Nenhuma sessão entre localizações diferentes~~ — FECHADO
 
-O Terraform que descreve o peer em Frankfurt está escrito, revisado e validado —
-e **nunca foi aplicado**. Não existe `terraform.tfstate` nem `terraform.tfvars`
-no repositório, o que é a prova de que `aws-up` jamais rodou.
+Duas sessões executadas, coletadas e destruídas. O que se aprendeu, além do
+óbvio, está em
+[08 — Experimentos](08-experimentos.md#o-que-isso-prova-e-que-loopback-não-provava);
+o resumo é que **os perfis sintéticos eram pessimistas em todas as dimensões** e
+que parte do custo medido em loopback era da bancada, não do rollback.
 
-Sem isso, seguem sem medição:
+Continuam sem medição, porque uma rodada de cinco minutos num link bom não os
+produz:
 
-- latência **real** entre continentes, com a cauda que ela tem
-- perda em rajada, que é como a Internet perde de verdade
-- NAT, firewall, travessia UDP entre redes domésticas e nuvem
-- rotas assimétricas (o caminho de ida diferente do de volta)
-- MTU no caminho real
-- relógios não sincronizados entre os peers
+- perda em rajada (o link real perdeu **zero** de 18 602 datagramas)
+- rotas que mudam no meio da sessão
+- congestionamento em horário de pico
+- NAT doméstico dos dois lados — aqui um dos lados era uma EC2 com IP público
 
 ### 3. A rede sintética não é a Internet
 
@@ -101,9 +111,19 @@ os últimos 8 inputs em cada datagrama, e **rajada é exatamente o pior caso par
 uma janela de redundância**. Perder 8 datagramas seguidos derrota a redundância;
 perder 8 espalhados não chega perto.
 
-Calibração honesta: Madri–Frankfurt são ~1 900 km, algo em torno de 30–40 ms de
-RTT real. Os perfis `delay20` (70 ms) e `jitter30` (86 ms) são portanto **mais
-duros** que o link real em atraso — mas mais gentis em formato de perda.
+Isso deixou de ser teoria depois da sessão real. Medido, não estimado:
+
+| | Madri↔Frankfurt real | `delay20` | `jitter30` | `loss2` |
+|---|---|---|---|---|
+| RTT | **50 ms** | 70 ms | 86 ms | 27 ms |
+| Variação do RTT | **0,37 ms** | 0,5 ms | ~18 ms | 0,5 ms |
+| Perda | **0,000%** (0 de 18 602) | 0% | 0% | 1,88% |
+
+Os perfis são pessimistas em todas as dimensões — o lado certo de errar, mas vale
+saber que `jitter30` descreve um Wi-Fi ruim e não um link entre datacenters.
+
+O que continua **não** medido é a forma da perda: este link não perdeu nada, então
+a hipótese de que rajadas derrotam a redundância de oito inputs segue sem teste.
 
 ### 4. O cliente gráfico com um humano
 
@@ -134,31 +154,13 @@ for s in 1 2 3 4 5; do SEED=$s DURATION=60 ./ops/scripts/bench.sh; done
 
 ---
 
-## Próximo passo planejado
+## Próximos passos, por valor
 
-**Sessão real entre localizações diferentes**, usando a infraestrutura descrita
-em [06 — AWS](06-aws.md): peer local ↔ EC2 em `eu-central-1` (Frankfurt).
-
-Isso fecha, de uma vez, os buracos 1 e 2 — porque a instância na AWS é
-necessariamente outra máquina, com outra CPU, e o binário chega nela por upload.
-
-Ordem de execução, e por que:
-
-1. `just check-determinism` local — confirmar o core antes de gastar dinheiro.
-2. `just aws-up lastblade2 <rom>` — sobe a infra, gera chave de sessão, envia
-   binários e ROM, inicia o peer remoto.
-3. Sessão com perfil `natural`. **Sem degradação sintética**: o objetivo é medir
-   a rede de verdade, e injetar atraso por cima só embaralharia a medição.
-4. Comparar o RTT medido com os perfis sintéticos, para saber quais deles
-   representam o link real e quais eram pessimismo.
-5. `just collect` — baixar os logs do peer remoto **antes** de destruir nada.
-6. `just aws-down` — destruir tudo, e conferir com os comandos de
-   [11 — Cleanup](11-cleanup.md).
-
-O que se espera aprender, além do óbvio:
-
-- se as regras de determinismo realmente aguentam duas CPUs diferentes
-- qual é a forma da perda num link real, comparada com o modelo Bernoulli
-- se a assimetria de rollback observada em loopback também aparece com a fase
-  determinada por um link de verdade
-- se 8 frames de limite de previsão bastam para a latência real
+1. **Um humano no P1.** É o único buraco que nenhuma métrica deste repositório
+   consegue fechar, e é a pergunta que o rollback existe para responder.
+2. **Uma sessão longa em link ruim** — móvel, ou entre continentes — para ver
+   perda em rajada, que é o único caso onde a redundância de oito inputs pode
+   genuinamente falhar.
+3. **Dispersão.** Variar a semente e agregar, para ter intervalos de confiança
+   em vez de amostras únicas.
+4. **SFA3**, se aparecer um set com `sfa3.key`.

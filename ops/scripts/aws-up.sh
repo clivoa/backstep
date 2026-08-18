@@ -81,7 +81,7 @@ umask 077
 printf '%s' "${SESSION_KEY}" >"${ROOT}/artifacts/session.key"
 echo "    key written to artifacts/session.key (mode 0600) and to SSM"
 
-echo "==> waiting for the instance to finish bootstrapping"
+echo "==> waiting for the SSM agent"
 for _ in $(seq 1 60); do
     if aws ssm describe-instance-information \
         --region "${REGION}" \
@@ -92,6 +92,43 @@ for _ in $(seq 1 60); do
     fi
     sleep 10
 done
+
+# The SSM agent answers long before cloud-init has finished -- it is baked into
+# the AMI and starts during boot, while user_data is still downloading and
+# installing the AWS CLI. Sending the start command on the strength of a ping
+# raced the bootstrap and failed with "cannot open /opt/rollback/env", which
+# reads like a broken script rather than "you were early".
+#
+# So wait for the marker the bootstrap writes when it is genuinely done.
+echo "==> waiting for the bootstrap to finish"
+BOOTSTRAPPED=0
+for _ in $(seq 1 60); do
+    MARKER_CMD="$(aws ssm send-command \
+        --region "${REGION}" \
+        --instance-ids "${INSTANCE}" \
+        --document-name AWS-RunShellScript \
+        --comment "await bootstrap" \
+        --parameters 'commands=["test -f /opt/rollback/BOOTSTRAP_COMPLETE"]' \
+        --query 'Command.CommandId' --output text 2>/dev/null || true)"
+    if [[ -n "${MARKER_CMD}" ]]; then
+        sleep 5
+        if aws ssm get-command-invocation \
+            --region "${REGION}" --command-id "${MARKER_CMD}" --instance-id "${INSTANCE}" \
+            --query 'Status' --output text 2>/dev/null | grep -q Success; then
+            BOOTSTRAPPED=1
+            break
+        fi
+    fi
+    sleep 5
+done
+
+if [[ ${BOOTSTRAPPED} -ne 1 ]]; then
+    echo "!!! the instance never finished bootstrapping." >&2
+    echo "!!! look at the log: aws ssm start-session --region ${REGION} --target ${INSTANCE}" >&2
+    echo "!!!   sudo tail -50 /var/log/rollback-bootstrap.log" >&2
+    exit 1
+fi
+echo "    bootstrap complete"
 
 echo "==> uploading artefacts to s3://${BUCKET}"
 aws s3 cp "${ROOT}/target/release/rollback-bot" "s3://${BUCKET}/bin/rollback-bot" \
@@ -119,33 +156,79 @@ if [[ ${NEEDS_ROM} -eq 1 ]]; then
     REMOTE_ARGS="${REMOTE_ARGS} --rom /opt/rollback/rom/${ROM_NAME}"
 fi
 
+# Build the launcher HERE and ship it, rather than writing it with a printf
+# inside an SSM command.
+#
+# That printf was three layers of quoting deep -- bash string, JSON string,
+# remote sh -- and it silently lost: `printf %s` does not interpret \n, so the
+# whole script landed on one line and the remote spent minutes trying to exec a
+# program whose name began "bash\nset -euo pipefail". The service reported
+# active the entire time.
+#
+# A file uploaded to S3 has no escaping at all.
+LAUNCHER="$(mktemp)"
+trap 'rm -f "${LAUNCHER}"' EXIT
+cat >"${LAUNCHER}" <<LAUNCH
+#!/usr/bin/env bash
+set -euo pipefail
+export ROLLBACK_SESSION_KEY="\$(tr -d '\\n' < /opt/rollback/secrets/session.key)"
+exec /opt/rollback/bin/rollback-bot ${REMOTE_ARGS}
+LAUNCH
+aws s3 cp "${LAUNCHER}" "s3://${BUCKET}/bin/run-peer.sh" \
+    --region "${REGION}" --only-show-errors
+
 COMMAND_ID="$(aws ssm send-command \
     --region "${REGION}" \
     --instance-ids "${INSTANCE}" \
     --document-name AWS-RunShellScript \
     --comment "start rollback peer" \
     --parameters "commands=[
-        'set -euxo pipefail',
-        'source /opt/rollback/env',
-        'aws s3 cp s3://${BUCKET}/bin/rollback-bot /opt/rollback/bin/rollback-bot',
-        'chmod 0755 /opt/rollback/bin/rollback-bot',
-        'if [ ${NEEDS_ROM} -eq 1 ]; then mkdir -p /opt/rollback/rom; aws s3 cp s3://${BUCKET}/bin/fbneo_libretro.so /opt/rollback/bin/fbneo_libretro.so; aws s3 cp s3://${BUCKET}/rom/${ROM_NAME} /opt/rollback/rom/${ROM_NAME}; fi',
-        'if [ ${NEEDS_BIOS} -eq 1 ]; then mkdir -p /opt/rollback/artifacts/system; aws s3 cp s3://${BUCKET}/rom/neogeo.zip /opt/rollback/artifacts/system/neogeo.zip; fi',
-        'printf %s \"#!/usr/bin/env bash\\nset -euo pipefail\\nexport ROLLBACK_SESSION_KEY=\\\$(cat /opt/rollback/secrets/session.key)\\nexec /opt/rollback/bin/rollback-bot ${REMOTE_ARGS}\\n\" > /opt/rollback/bin/run-peer.sh',
-        'chmod 0755 /opt/rollback/bin/run-peer.sh',
+        'set -eux',
+        '. /opt/rollback/env',
+        'aws s3 cp --only-show-errors s3://${BUCKET}/bin/rollback-bot /opt/rollback/bin/rollback-bot',
+        'aws s3 cp --only-show-errors s3://${BUCKET}/bin/run-peer.sh /opt/rollback/bin/run-peer.sh',
+        'chmod 0755 /opt/rollback/bin/rollback-bot /opt/rollback/bin/run-peer.sh',
+        'if [ ${NEEDS_ROM} -eq 1 ]; then mkdir -p /opt/rollback/rom; aws s3 cp --only-show-errors s3://${BUCKET}/bin/fbneo_libretro.so /opt/rollback/bin/fbneo_libretro.so; aws s3 cp --only-show-errors s3://${BUCKET}/rom/${ROM_NAME} /opt/rollback/rom/${ROM_NAME}; fi',
+        'if [ ${NEEDS_BIOS} -eq 1 ]; then mkdir -p /opt/rollback/artifacts/system; aws s3 cp --only-show-errors s3://${BUCKET}/rom/neogeo.zip /opt/rollback/artifacts/system/neogeo.zip; fi',
+        'head -1 /opt/rollback/bin/run-peer.sh',
         'systemctl restart rollback-bot.service',
-        'systemctl is-active rollback-bot.service'
+        'sleep 3',
+        'systemctl is-active rollback-bot.service',
+        'ss -lun | grep -q :${PORT} || (journalctl -u rollback-bot.service -n 20 --no-pager; echo NO-UDP-LISTENER; exit 1)'
     ]" \
     --query 'Command.CommandId' --output text)"
 
 echo "    ssm command ${COMMAND_ID}"
-sleep 8
+
+# Wait for a terminal status rather than guessing with a sleep.
+STATUS="Pending"
+for _ in $(seq 1 30); do
+    sleep 4
+    STATUS="$(aws ssm get-command-invocation \
+        --region "${REGION}" --command-id "${COMMAND_ID}" --instance-id "${INSTANCE}" \
+        --query 'Status' --output text 2>/dev/null || echo Pending)"
+    case "${STATUS}" in
+        Success | Failed | Cancelled | TimedOut) break ;;
+    esac
+done
+
 aws ssm get-command-invocation \
     --region "${REGION}" \
     --command-id "${COMMAND_ID}" \
     --instance-id "${INSTANCE}" \
     --query '{status:Status,out:StandardOutputContent,err:StandardErrorContent}' \
     --output json || true
+
+# Do not print "the peer is up" when it is not. The first version of this script
+# did, and the operator only found out when the handshake timed out sixty
+# seconds later with no explanation.
+if [[ "${STATUS}" != "Success" ]]; then
+    echo >&2
+    echo "!!! the remote peer did NOT start (ssm status: ${STATUS})" >&2
+    echo "!!! the infrastructure is up and costing money. Either fix and re-run" >&2
+    echo "!!! this script, or tear it down with 'just aws-down'." >&2
+    exit 1
+fi
 
 cat <<SUMMARY
 

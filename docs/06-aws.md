@@ -186,6 +186,88 @@ Para revisar uma mudança de infra sem aplicar:
 just aws-plan
 ```
 
+## Cinco coisas que só o primeiro `apply` de verdade encontrou
+
+O Terraform passava em `fmt` e `validate`, os scripts passavam em `shellcheck`, e
+mesmo assim a primeira sessão real levou cinco tentativas. Vale registrar cada
+uma, porque todas são de uma classe que nenhum gate local pega.
+
+### 1. Um apóstrofo derrubou o `apply`
+
+```
+Error: creating VPC Security Group Rule
+InvalidParameterValue: Invalid rule description. Valid descriptions are strings
+less than 256 characters from the following set:  a-zA-Z0-9. _-:/()#,@[]+=&;{}!$*
+```
+
+A descrição era `"Rollback session traffic from the operator's address"`. O
+apóstrofo não está no conjunto permitido. `terraform validate` acha isso ótimo —
+só a API da AWS recusa.
+
+### 2. O SSM roda `/bin/sh`, não bash
+
+`AWS-RunShellScript` junta os comandos num script executado pelo shell padrão,
+que no Ubuntu é **dash**. Dois bashisms morreram ali:
+
+- `set -euo pipefail` → `set: Illegal option -o pipefail`
+- `source /opt/rollback/env` → `source: not found`
+
+Correção: `set -eux` e `.` no lugar de `source`.
+
+### 3. O Ubuntu 24.04 não tem mais o pacote `awscli`
+
+```
+E: Package 'awscli' has no installation candidate
+```
+
+O `noble` removeu o pacote. Sob `set -e`, isso mata o `user_data` na primeira
+linha e deixa uma instância que **liga, responde ao SSM, e não tem nada
+instalado** — uma falha invisível de fora. O bootstrap agora instala o bundle v2
+oficial da AWS.
+
+### 4. SSM Online não significa bootstrap pronto
+
+O agente SSM vem embutido na AMI e responde durante o boot, muito antes de o
+`cloud-init` terminar. Esperar pelo ping e mandar o comando em seguida disputa
+com o bootstrap e falha com `cannot open /opt/rollback/env` — que parece script
+quebrado, não "você chegou cedo".
+
+O `aws-up` agora espera pelo marcador `/opt/rollback/BOOTSTRAP_COMPLETE`, que o
+bootstrap escreve quando de fato acabou.
+
+### 5. `printf %s` não interpreta `\n`
+
+O lançador remoto era escrito por um `printf` dentro de um comando SSM — três
+camadas de aspas (string bash → string JSON → sh remoto). E `printf %s` não
+interpreta escapes, então o script inteiro caiu numa linha só:
+
+```
+/usr/bin/env bash\nset -euo pipefail\nexport ROLLBACK_SESSION_KEY=...
+```
+
+O `env` passou minutos tentando executar um programa chamado
+`bash\nset -euo pipefail\n…`, e o `systemctl is-active` respondia **active** o
+tempo todo.
+
+Correção estrutural, não cosmética: o lançador é **gerado localmente e enviado
+como arquivo**. Um arquivo no S3 não tem camada de escape nenhuma.
+
+### A lição comum
+
+Quatro das cinco falharam **em silêncio ou com sucesso aparente**. O `aws-up`
+chegava ao fim imprimindo "the remote peer is up" com o peer morto, e só se
+descobria pelo handshake estourando 120 s depois, sem explicação.
+
+Por isso o script agora:
+
+- espera o comando SSM chegar a um estado terminal em vez de dormir 8 s;
+- **falha ruidosamente** se o status não for `Success`, dizendo que a infra está
+  de pé e custando dinheiro;
+- confirma com `ss -lun | grep -q :7000` que o peer está **realmente escutando**,
+  e despeja o journal se não estiver.
+
+Verificar é barato. Descobrir pelo handshake é caro.
+
 ## Estado do Terraform
 
 O backend é local (`terraform/terraform.tfstate`), e está no `.gitignore`.

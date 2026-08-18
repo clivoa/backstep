@@ -99,11 +99,15 @@ resource "aws_security_group" "peer" {
 
 resource "aws_vpc_security_group_ingress_rule" "session" {
   security_group_id = aws_security_group.peer.id
-  description       = "Rollback session traffic from the operator's address"
-  cidr_ipv4         = var.allowed_cidr
-  from_port         = var.session_port
-  to_port           = var.session_port
-  ip_protocol       = "udp"
+  # No apostrophe: AWS rejects rule descriptions outside
+  # [a-zA-Z0-9._-:/()#,@[]+=&;{}!$*] and space, and "operator's" fails the
+  # apply with a bare InvalidParameterValue. Only a real apply finds this --
+  # `terraform validate` is perfectly happy with it.
+  description = "Rollback session traffic from the operator address"
+  cidr_ipv4   = var.allowed_cidr
+  from_port   = var.session_port
+  to_port     = var.session_port
+  ip_protocol = "udp"
 }
 
 # Egress is open: the instance has to reach S3, SSM and the package mirrors.

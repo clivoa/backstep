@@ -245,6 +245,130 @@ razoável ler 93,5% como um **piso**.
 uma taxa fixa de 60 Hz, com oito repetições de largura fixa. Nem perda, nem
 atraso, nem rollback mudam quanto o protocolo põe no cabo.
 
+## A sessão real: Madri ↔ Frankfurt
+
+Tudo acima é loopback com degradação sintética. Esta seção é a Internet.
+
+| | P1 | P2 |
+|---|---|---|
+| Onde | Madri, Espanha | Frankfurt, `eu-central-1` |
+| Máquina | Arch Linux, Intel Core i7-10750H | Ubuntu 24.04, EC2 `t3.small` |
+| Papel | disca | escuta em UDP/7000 |
+
+**Perfil `natural` — sem degradação sintética.** Injetar atraso por cima de um
+link real só embaralharia a medição; o objetivo aqui é medir o que existe.
+
+### The Last Blade 2, 300 segundos
+
+| Métrica | P1 (Madri) | P2 (Frankfurt) |
+|---|---|---|
+| `effective_fps` | 60,01 | 60,01 |
+| Rollbacks | **1 280** | 31 |
+| Profundidade média | 2,04 | 1,03 |
+| Profundidade máxima | 4 | 2 |
+| Acurácia de previsão | 92,9% | 92,4% |
+| Trabalho extra | 14,5% | 0,2% |
+| Stalls | **0** | **0** |
+| Checksums comparados | **300** | **300** |
+| Desync | **não** | **não** |
+| SRTT | 49,9 ms | 51,6 ms |
+| Variação do RTT | **0,37 ms** | 3,22 ms |
+| Perda | **0,000%** | **0,000%** |
+| CPU | 116 s | 46 s |
+
+### A arena, 150 segundos
+
+Rodada logo em seguida, no mesmo link, trocando só a simulação.
+
+| Métrica | P1 (Madri) | P2 (Frankfurt) |
+|---|---|---|
+| Rollbacks | 19 | **601** |
+| Profundidade média / máxima | 1,00 / 1 | 2,02 / 3 |
+| Acurácia de previsão | 91,7% | 93,3% |
+| Checksums comparados | 149 | 150 |
+| Desync | **não** | **não** |
+| SRTT | 51,8 ms | 50,0 ms |
+| CPU | 1,95 s | 1,54 s |
+
+### O que isso prova, e que loopback não provava
+
+**1. Determinismo entre máquinas diferentes.** Este era o buraco mais sério do
+projeto ([13 — Cobertura](13-cobertura.md)). 449 comparações de checksum
+concordando, entre um desktop Arch Linux com um i7-10750H e uma EC2 Ubuntu 24.04
+— CPU diferente, sistema diferente, libc diferente. Zero desyncs.
+
+A arena importa em separado aqui: ela é o código que **nós** escrevemos, e as
+regras de ponto fixo Q23.8, proibição de `HashMap`, FNV-1a próprio e
+`overflow-checks` em release existem exatamente para este cenário. Dois processos
+do mesmo binário na mesma CPU teriam concordado mesmo se todas estivessem
+erradas. Agora não teriam.
+
+**2. Os perfis sintéticos eram pessimistas — em todas as dimensões.**
+
+| | Link real Madri↔Frankfurt | `delay20` | `jitter30` | `loss2` |
+|---|---|---|---|---|
+| RTT | **50 ms** | 70 ms | 86 ms | 27 ms |
+| Variação do RTT | **0,37 ms** | 0,5 ms | ~18 ms | 0,5 ms |
+| Perda | **0,000%** | 0% | 0% | 1,88% |
+
+Zero datagramas perdidos em **18 602 enviados** ao longo de cinco minutos. E a
+variação do RTT de 0,37 ms significa que fibra entre cidades europeias é **muito**
+mais estável do que o perfil `jitter30` supõe.
+
+Errar para o lado pessimista é o lado certo de errar — mas vale registrar que
+`jitter30` e `loss2` descrevem um Wi-Fi ruim, não um link entre datacenters.
+
+**3. A previsão volta a acertar ~93%.** Terceira medição independente: arena em
+loopback 93,5%, Last Blade 2 em loopback 93,0%, Last Blade 2 na Internet real
+**92,9%**. A hipótese central do rollback — inputs de luta são segurados — não
+depende do jogo nem da rede.
+
+**4. A profundidade real é muito menor que a simulada.** Com RTT comparável
+(50 ms real vs 70 ms no `delay20`), a profundidade média caiu de **6,53 para
+2,04**, a máxima de 7 para 4, e os stalls de **37 para zero**.
+
+Duas razões, e a segunda é uma lição sobre o método:
+
+- o link real tem variação de RTT ~50× menor;
+- em loopback os **dois peers dividiam a mesma CPU**, e a disputa por
+  escalonamento adiciona deriva de fase que não existe quando cada peer tem sua
+  própria máquina.
+
+Ou seja: parte do custo que os experimentos em loopback mediram era do
+laboratório, não do rollback.
+
+**5. A assimetria é real, e trocou de lado entre as duas rodadas.** No Last Blade
+2 Madri pagou 1 280 rollbacks contra 31 de Frankfurt; na arena, quinze minutos
+depois e no mesmo link, **Frankfurt pagou 601 contra 19 de Madri**.
+
+Nada mudou na rede. Mudou quem completou o handshake primeiro. É a demonstração
+mais limpa possível de que "quantos rollbacks meu cliente faz" não mede a
+qualidade da conexão — mede a fase de largada.
+
+**6. O custo de CPU se confirma fora da bancada.** 116 s de CPU para 300 s de
+sessão em Madri (~39% de um núcleo, exatamente como em loopback), contra 46 s em
+Frankfurt — que quase não fez rollback. O peer que paga a assimetria paga também
+em CPU.
+
+### Reprodução
+
+```bash
+just check-determinism /caminho/lastbld2.zip     # antes de gastar
+just aws-up lastblade2 /caminho/lastbld2.zip
+# noutro terminal, o peer local:
+export ROLLBACK_SESSION_KEY=$(cat artifacts/session.key)
+./target/release/rollback-bot --sim lastblade2 --player p1 \
+  --peer "$(terraform -chdir=terraform output -raw peer_address)" --bind 0.0.0.0:0 \
+  --profile natural --seed 4242 --duration 300 --mode play \
+  --core cores/fbneo_libretro.so --rom /caminho/lastbld2.zip \
+  --system-dir artifacts/system --log-dir artifacts/logs
+just collect      # SEMPRE antes
+just aws-down
+```
+
+Custo da rodada inteira (duas sessões, ~40 min de instância): abaixo de
+US$ 0,05. Ver [10 — Custos](10-custos.md).
+
 ## O que os experimentos não medem
 
 > **Antes de tudo: uma máquina, dois processos, loopback.** Nenhum número deste
