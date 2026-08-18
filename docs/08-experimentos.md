@@ -369,6 +369,17 @@ just aws-down
 Custo da rodada inteira (duas sessões, ~40 min de instância): abaixo de
 US$ 0,05. Ver [10 — Custos](10-custos.md).
 
+## Os números daqui vêm de sessões sem gravação
+
+Vale deixar explícito porque é fácil confundir: os vídeos de
+[14 — Vídeo](14-video.md) não são a fonte destes números.
+
+Gravar custa ~65% de um núcleo por peer, e isso desloca a medição — no perfil
+`natural` em loopback, o RTT p50 sobe de **16,6 ms sem gravação para 38,0 ms
+com**. Não é a rede: é o laço de frame ficando mais lento numa máquina ocupada.
+
+Os vídeos ilustram o comportamento com fidelidade. Os números vêm daqui.
+
 ## O que os experimentos não medem
 
 > **Antes de tudo: uma máquina, dois processos, loopback.** Nenhum número deste

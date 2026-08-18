@@ -1,0 +1,60 @@
+# Elasticsearch + Kibana for picking session logs apart frame by frame.
+#
+# The JSONL logs already carry every event the session produced -- one record
+# per advanced frame, per rollback, per datagram sent and received. `summary.csv`
+# reduces a whole session to one row, which is the right shape for comparing
+# profiles and the wrong shape for asking "what exactly happened around frame
+# 2399?". That question is what this stack is for.
+#
+#   just elastic-up
+#   just elastic-load        # index everything in artifacts/logs
+#   http://127.0.0.1:5601
+#
+# Bound to loopback, security disabled, single node: this is a laptop analysis
+# tool, not an exposed service. It never leaves the machine, which is also why
+# there is no password -- adding one would imply a threat model this does not
+# have. See docs/07 for the same argument about the metrics exporter.
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: rollback-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      # A session log is ~8 MB and indexes in seconds; 2 GB is plenty and keeps
+      # this from evicting everything else on a laptop.
+      - ES_JAVA_OPTS=-Xms1g -Xmx2g
+      - ingest.geoip.downloader.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - elastic-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    container_name: rollback-kibana
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+      # Kibana refuses to start without a 32-character key. This one is fixed
+      # and public on purpose: it encrypts saved objects in a container that
+      # holds nothing but this lab's own telemetry, on loopback.
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=rollbacknetcodelabkibanakey00001
+    ports:
+      - "127.0.0.1:5601:5601"
+
+volumes:
+  elastic-data:

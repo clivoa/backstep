@@ -36,6 +36,8 @@ aws ssm send-command \
 sleep 5
 
 echo "==> downloading from s3://${BUCKET}/remote"
+aws s3 sync "s3://${BUCKET}/remote/artifacts/video" "${ROOT}/artifacts/video/remote" \
+    --region "${REGION}" --only-show-errors || true
 aws s3 sync "s3://${BUCKET}/remote/artifacts/logs" "${LOG_DIR}" \
     --region "${REGION}" --only-show-errors
 aws s3 cp "s3://${BUCKET}/remote/bootstrap.log" "${ROOT}/artifacts/remote-bootstrap.log" \

@@ -24,6 +24,7 @@
 
 pub mod app;
 pub mod handshake;
+pub mod record;
 pub mod runner;
 
 pub use app::{
@@ -31,4 +32,5 @@ pub use app::{
     APP_COMMIT,
 };
 pub use handshake::{handshake, HandshakeError, Role};
+pub use record::{RecordError, VideoRecorder};
 pub use runner::{RunnerConfig, SessionRunner, StepOutcome};

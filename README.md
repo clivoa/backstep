@@ -32,6 +32,8 @@ previsões, rollbacks e desyncs.
 | [11 — Cleanup](docs/11-cleanup.md) | Como destruir tudo e conferir que sumiu |
 | [12 — Troubleshooting](docs/12-troubleshooting.md) | Sintomas, causas e o que olhar primeiro |
 | [13 — Cobertura](docs/13-cobertura.md) | O que foi validado, o que não foi, e o próximo passo |
+| [14 — Vídeo](docs/14-video.md) | Gravar as sessões e ver o rollback acontecendo |
+| [15 — Elastic](docs/15-elastic.md) | Análise por evento: o que o `summary.csv` não responde |
 
 ---
 
@@ -43,7 +45,8 @@ previsões, rollbacks e desyncs.
 |---|---|---|
 | Rust ≥ 1.82 | compilar tudo | `cargo --version` |
 | SDL2 ≥ 2.0.20 | cliente gráfico | `pkg-config --modversion sdl2` |
-| Docker | build do FBNeo, Prometheus, Grafana | `docker --version` |
+| Docker | build do FBNeo, Prometheus, Grafana, Elastic | `docker --version` |
+| ffmpeg | gravar vídeo das sessões (opcional) | `ffmpeg -version` |
 | `just` | os comandos abaixo | `just --version` |
 | Terraform ≥ 1.6 | infraestrutura AWS | `terraform version` |
 | AWS CLI | `aws-up`, `collect`, `aws-down` | `aws sts get-caller-identity` |

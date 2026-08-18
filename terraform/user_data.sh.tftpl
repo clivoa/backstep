@@ -21,6 +21,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    ffmpeg \
     unzip
 
 # The AWS CLI comes from AWS, not from apt.
@@ -44,6 +45,7 @@ aws --version
 install -d -m 0755 /opt/rollback/bin
 install -d -m 0755 /opt/rollback/artifacts/logs
 install -d -m 0755 /opt/rollback/artifacts/system
+install -d -m 0755 /opt/rollback/artifacts/video
 install -d -m 0700 /opt/rollback/secrets
 
 # --- shutdown deadline -----------------------------------------------------
@@ -98,6 +100,10 @@ source /opt/rollback/env
 # someone's BIOS on every sync is pointless traffic, and `collect` does not want
 # it back anyway.
 aws s3 sync /opt/rollback/artifacts/logs "s3://$ROLLBACK_BUCKET/remote/artifacts/logs" \
+    --region "$AWS_DEFAULT_REGION" --only-show-errors
+# Recordings too, when there are any. Still not artifacts/system, which holds
+# the BIOS and NVRAM and would be pointless traffic.
+aws s3 sync /opt/rollback/artifacts/video "s3://$ROLLBACK_BUCKET/remote/artifacts/video" \
     --region "$AWS_DEFAULT_REGION" --only-show-errors
 aws s3 cp /var/log/rollback-bootstrap.log \
     "s3://$ROLLBACK_BUCKET/remote/bootstrap.log" \

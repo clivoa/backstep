@@ -141,6 +141,46 @@ local-down:
 local-logs:
     docker compose -f ops/docker-compose.yml logs -f --tail=100
 
+# --- Elastic ---------------------------------------------------------------
+
+# Elasticsearch on :9200 and Kibana on :5601, both bound to loopback.
+elastic-up:
+    docker compose -f ops/elastic/docker-compose.yml up -d
+    @echo
+    @echo "    Kibana         http://127.0.0.1:5601  (takes ~40 s to be ready)"
+    @echo "    Elasticsearch  http://127.0.0.1:9200"
+    @echo
+    @echo "    Then: just elastic-load"
+
+elastic-down:
+    docker compose -f ops/elastic/docker-compose.yml down
+
+# Index the session logs. `all=1` also indexes every datagram record, which is
+# tens of thousands of documents per session.
+elastic-load logs="artifacts/logs" all="":
+    @python3 ops/scripts/elastic-load.py --logs "{{logs}}" {{ if all == "" { "" } else { "--all" } }}
+
+# Drop the indices and load again.
+elastic-reload logs="artifacts/logs":
+    @python3 ops/scripts/elastic-load.py --logs "{{logs}}" --reset
+
+# The analyses a single-row summary cannot do: depth distribution, latency
+# tail, whether rollbacks cluster, where the frame budget goes.
+elastic-analyze session="":
+    @python3 ops/scripts/elastic-analyze.py {{ if session == "" { "" } else { "--session " + session } }}
+
+# --- video -----------------------------------------------------------------
+
+# Record one annotated video per network profile, both peers, side by side.
+# Needs ffmpeg. The arena has no framebuffer, so this is emulated games only.
+record-scenarios rom duration="90" profiles="natural delay20 jitter30 loss2 combined":
+    ROM="{{rom}}" DURATION="{{duration}}" PROFILES="{{profiles}}" \
+        ops/scripts/record-scenarios.sh
+
+# Burn a session's telemetry into an existing recording.
+annotate video log out label="":
+    @python3 ops/scripts/annotate-video.py "{{video}}" "{{log}}" "{{out}}" "{{label}}"
+
 # --- AWS -------------------------------------------------------------------
 
 # Apply the Terraform, push a fresh session key to SSM, upload the binaries and

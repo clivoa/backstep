@@ -51,6 +51,10 @@ if [[ ! -f "${TF_DIR}/terraform.tfvars" ]]; then
     exit 2
 fi
 
+if [[ ${RECORD:-0} -eq 1 ]]; then
+    echo "==> the remote peer will record video (needs ffmpeg on the instance)"
+fi
+
 echo "==> building release binaries"
 cargo build --release -p rollback-bot
 
@@ -151,6 +155,11 @@ REMOTE_ARGS="--sim ${SIM} --player p2 --bind 0.0.0.0:${PORT} --profile ${PROFILE
 REMOTE_ARGS="${REMOTE_ARGS} --seed ${SEED} --duration ${DURATION} --mode play"
 REMOTE_ARGS="${REMOTE_ARGS} --log-dir /opt/rollback/artifacts/logs"
 REMOTE_ARGS="${REMOTE_ARGS} --system-dir /opt/rollback/artifacts/system"
+if [[ ${RECORD:-0} -eq 1 && ${NEEDS_ROM} -eq 1 ]]; then
+    # The far side's video is the whole point of recording a real link: the two
+    # peers do wildly different amounts of work, and only one of them is here.
+    REMOTE_ARGS="${REMOTE_ARGS} --record /opt/rollback/artifacts/video/peer.mp4"
+fi
 if [[ ${NEEDS_ROM} -eq 1 ]]; then
     REMOTE_ARGS="${REMOTE_ARGS} --core /opt/rollback/bin/fbneo_libretro.so"
     REMOTE_ARGS="${REMOTE_ARGS} --rom /opt/rollback/rom/${ROM_NAME}"
@@ -189,6 +198,7 @@ COMMAND_ID="$(aws ssm send-command \
         'aws s3 cp --only-show-errors s3://${BUCKET}/bin/run-peer.sh /opt/rollback/bin/run-peer.sh',
         'chmod 0755 /opt/rollback/bin/rollback-bot /opt/rollback/bin/run-peer.sh',
         'if [ ${NEEDS_ROM} -eq 1 ]; then mkdir -p /opt/rollback/rom; aws s3 cp --only-show-errors s3://${BUCKET}/bin/fbneo_libretro.so /opt/rollback/bin/fbneo_libretro.so; aws s3 cp --only-show-errors s3://${BUCKET}/rom/${ROM_NAME} /opt/rollback/rom/${ROM_NAME}; fi',
+        'mkdir -p /opt/rollback/artifacts/video',
         'if [ ${NEEDS_BIOS} -eq 1 ]; then mkdir -p /opt/rollback/artifacts/system; aws s3 cp --only-show-errors s3://${BUCKET}/rom/neogeo.zip /opt/rollback/artifacts/system/neogeo.zip; fi',
         'head -1 /opt/rollback/bin/run-peer.sh',
         'systemctl restart rollback-bot.service',

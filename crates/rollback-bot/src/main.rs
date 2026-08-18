@@ -20,7 +20,9 @@ use rollback_core::{
 };
 use rollback_libretro::{BootDirector, Game, LibretroCore, LibretroSimulation, ScriptedBot};
 use rollback_net::{Authenticator, UdpTransport, DEFAULT_PORT};
-use rollback_runner::{app, handshake, Role, RunnerConfig, SessionRunner, StepOutcome};
+use rollback_runner::{
+    app, handshake, Role, RunnerConfig, SessionRunner, StepOutcome, VideoRecorder,
+};
 use rollback_telemetry::SessionInfo;
 
 #[derive(Parser, Debug)]
@@ -78,6 +80,14 @@ struct Args {
     /// both peers -- see docs/05-determinismo.md.
     #[arg(long, default_value = "artifacts/system")]
     system_dir: PathBuf,
+
+    /// Record the presented frames to this MP4. Needs ffmpeg on PATH, and an
+    /// emulated simulation -- the arena has no framebuffer.
+    ///
+    /// What lands in the file is exactly the frames the player would have seen:
+    /// one per advanced frame, none of the re-simulated ones.
+    #[arg(long)]
+    record: Option<PathBuf>,
 
     /// Where to write the JSONL session log.
     #[arg(long, default_value = "artifacts/logs")]
@@ -257,6 +267,27 @@ fn main() -> Result<()> {
                 core.av_timing().fps
             );
 
+            let geometry = core.geometry();
+            let mut recorder = match &args.record {
+                Some(path) => {
+                    let rec = VideoRecorder::start(
+                        path,
+                        geometry.base_width,
+                        geometry.base_height,
+                        config.tick_rate_hz,
+                    )?;
+                    eprintln!(
+                        "recording {}x{} at {} Hz to {}",
+                        geometry.base_width,
+                        geometry.base_height,
+                        config.tick_rate_hz,
+                        path.display()
+                    );
+                    Some(rec)
+                }
+                None => None,
+            };
+
             let runner = SessionRunner::new(
                 LibretroSimulation::new(core)
                     .with_checksum_skip(rollback_libretro::core::CHECKSUM_SKIP_BYTES),
@@ -266,7 +297,7 @@ fn main() -> Result<()> {
             let director = BootDirector::new(game);
             let mut bot = ScriptedBot::new(game, config.seed, player.index());
             let slot = player.index();
-            session_loop(
+            let result = session_loop_observed(
                 runner,
                 frame_budget,
                 move |_sim: &LibretroSimulation, frame| {
@@ -278,7 +309,29 @@ fn main() -> Result<()> {
                         None => bot.decide(),
                     }
                 },
-            )
+                |sim: &LibretroSimulation| {
+                    if let Some(rec) = recorder.as_mut() {
+                        let frame = sim.video();
+                        rec.push(frame.width, frame.height, &frame.pixels)?;
+                    }
+                    Ok(())
+                },
+            );
+
+            // Close the file even if the session ended badly: a recording of a
+            // session that desynced is exactly the one worth watching.
+            if let Some(rec) = recorder.take() {
+                let written = rec.frames_written;
+                let skipped = rec.frames_skipped;
+                match rec.finish() {
+                    Ok(path) => eprintln!(
+                        "recorded {written} frames to {} ({skipped} skipped)",
+                        path.display()
+                    ),
+                    Err(e) => eprintln!("recording failed to finish: {e}"),
+                }
+            }
+            result
         }
     }
 }
@@ -289,14 +342,30 @@ fn main() -> Result<()> {
 /// simulated, and returns this peer's input for it. The arena bot uses the
 /// state; the scripted bot cannot see the state at all (no ROM offsets -- see
 /// the module docs in `rollback_libretro::script`) and ignores it.
-fn session_loop<S, F>(
+fn session_loop<S, F>(runner: SessionRunner<S>, frame_budget: u64, next_input: F) -> Result<()>
+where
+    S: Simulation,
+    F: FnMut(&S, u32) -> PlayerInput,
+{
+    session_loop_observed(runner, frame_budget, next_input, |_| Ok(()))
+}
+
+/// The main loop, with a hook that sees every frame that was actually
+/// presented.
+///
+/// The hook fires only on `Advanced`, never on a stall and never during
+/// re-simulation, which is what makes a recording made through it an honest
+/// record of what reached the player.
+fn session_loop_observed<S, F, O>(
     mut runner: SessionRunner<S>,
     frame_budget: u64,
     mut next_input: F,
+    mut on_presented: O,
 ) -> Result<()>
 where
     S: Simulation,
     F: FnMut(&S, u32) -> PlayerInput,
+    O: FnMut(&S) -> Result<()>,
 {
     let mut frames = 0u64;
     let mut last_report = std::time::Instant::now();
@@ -306,7 +375,10 @@ where
         let input = next_input(runner.simulation(), frame);
 
         match runner.step(input)? {
-            StepOutcome::Advanced { .. } => frames += 1,
+            StepOutcome::Advanced { .. } => {
+                frames += 1;
+                on_presented(runner.simulation())?;
+            }
             StepOutcome::Stalled { .. } => {}
             StepOutcome::Ended(reason) => {
                 eprintln!("session ended: {reason:?}");
