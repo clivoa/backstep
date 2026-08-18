@@ -48,7 +48,7 @@ fn main() -> Result<()> {
         .with_context(|| format!("writing {}", html_path.display()))?;
 
     println!(
-        "{} sessão(ões) lidas de {}",
+        "{} session(s) read from {}",
         sessions.len(),
         args.logs.display()
     );
@@ -73,7 +73,7 @@ fn main() -> Result<()> {
         eprintln!("logs incompletos: {}", incomplete.join(", "));
     }
     if args.strict && !(desynced.is_empty() && incomplete.is_empty()) {
-        anyhow::bail!("--strict: há sessões com desync ou log incompleto");
+        anyhow::bail!("--strict: some sessions desynced or have an incomplete log");
     }
     Ok(())
 }

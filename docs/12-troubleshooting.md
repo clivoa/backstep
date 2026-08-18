@@ -1,117 +1,132 @@
 # 12 — Troubleshooting
 
-## O handshake expira
+## The handshake times out
 
 ```
 Error: handshake failed
 Caused by: no compatible peer answered within 60s
 ```
 
-Em ordem de probabilidade:
+In order of likelihood:
 
-1. **Chaves de sessão diferentes.** Todo datagrama falha o HMAC e é descartado
-   *antes* de virar mensagem, então o sintoma é silêncio, não recusa. Confirme:
-   `curl -s http://127.0.0.1:9898/metrics | grep auth_failures` — se estiver
-   subindo, alguém está falando, mas com a chave errada.
-2. **O `allowed_cidr` não é o seu IP atual.** IP residencial muda.
-   `curl -s https://checkip.amazonaws.com` e compare com
+1. **Different session keys.** Every datagram fails the HMAC and is discarded
+   *before* becoming a message, so the symptom is silence rather than refusal.
+   Check with `curl -s http://127.0.0.1:9898/metrics | grep auth_failures`. If
+   that is climbing, someone is talking with the wrong key.
+2. **`allowed_cidr` is not your current address.** Residential addresses move.
+   Compare `curl -s https://checkip.amazonaws.com` with
    `terraform -chdir=terraform output allowed_cidr`.
-3. **UDP bloqueado no caminho.** Alguns provedores e redes corporativas
-   descartam UDP em portas altas. Teste com `nc -u <ip> 7000` dos dois lados.
-4. **O peer remoto não está rodando.**
-   `aws ssm start-session --target <id>` e `systemctl status rollback-bot`.
+3. **UDP blocked on the path.** Some ISPs and corporate networks drop UDP on
+   high ports. Test with `nc -u <ip> 7000` from both ends.
+4. **The remote peer is not running.** `aws ssm start-session --target <id>`,
+   then `systemctl status rollback-bot`.
 
-## O handshake é recusado com um motivo
+On that last one: `aws-up` now proves the peer is listening with
+`ss -lun | grep -q :7000` before it claims success, so a silent dead peer should
+be rarer than it was. If `aws-up` printed a failure and you continued anyway,
+this is why.
+
+## The handshake is refused, with a reason
 
 ```
 Error: peer refused the session: ROM hash mismatch
 ```
 
-Isso é o sistema funcionando. A lista de motivos possíveis, e o que fazer:
+That is the system working.
 
-| Motivo | Causa | Correção |
+| Reason | Cause | Fix |
 |---|---|---|
-| `protocol version mismatch` | builds de versões incompatíveis do protocolo | recompile os dois lados |
-| `peers chose different simulations` | um `--sim arena`, outro `--sim sfa3` | use o mesmo |
-| `peers run different application builds` | commits diferentes | `just aws-up` de novo, do mesmo commit |
-| `session configuration mismatch` | `--input-delay` ou `--prediction-limit` diferentes | use os mesmos valores |
-| `session seed mismatch` | `--seed` diferente | use a mesma semente |
-| `libretro core hash mismatch` | cores compilados diferentes | copie o mesmo `.so` para os dois |
-| `ROM hash mismatch` | revisões de ROM diferentes | use exatamente o mesmo arquivo |
-| `both peers asked for the same player slot` | dois `--player p1` | um deve ser `p2` |
+| `protocol version mismatch` | incompatible protocol builds | rebuild both sides |
+| `peers chose different simulations` | one `--sim arena`, one `--sim lastblade2` | use the same |
+| `peers run different application builds` | different commits | `just aws-up` again, from the same commit |
+| `session configuration mismatch` | different `--input-delay` or `--prediction-limit` | use the same values |
+| `session seed mismatch` | different `--seed` | use the same seed |
+| `libretro core hash mismatch` | differently built cores | copy the same `.so` to both |
+| `ROM hash mismatch` | different ROM or BIOS | use exactly the same files, including `neogeo.zip` |
+| `both peers asked for the same player slot` | two `--player p1` | one must be `p2` |
 
-## A sessão trava (faixa cinza contínua)
+The ROM hash covers the BIOS as well, so a mismatched `neogeo.zip` reports as a
+ROM mismatch. That is deliberate: a Neo Geo game is only half the code that
+runs.
 
-Cinza no overlay = stall: a janela de previsão encheu e a simulação parou.
+## The session stalls, with a continuous grey band
 
-- **Ocasional sob jitter alto:** normal. É o limite de previsão fazendo o trabalho
-  dele, impedindo que um rollback precise voltar mais fundo que o buffer alcança.
-- **Contínuo:** o peer parou de falar. Depois de 3 segundos sem datagrama
-  autenticado, a sessão encerra com `PeerTimeout`.
+Grey in the overlay means a stall: the prediction window filled and the
+simulation stopped.
 
-Olhe `rollback_inferred_lost_total` e `rollback_srtt_seconds`. Se o RTT
-disparou, a rede piorou. Se a perda foi a 100%, o caminho caiu.
+Occasional stalls under high jitter are normal. That is the prediction limit
+doing its job, keeping a rollback from reaching further back than the state
+buffer goes.
 
-## Desync confirmado
+Continuous grey means the peer stopped talking. After three seconds with no
+authenticated datagram, the session ends with `PeerTimeout`.
+
+Look at `rollback_inferred_lost_total` and `rollback_srtt_seconds`. If RTT
+spiked, the network got worse. If loss went to 100%, the path is down.
+
+## Confirmed desync
 
 ```
 Error: session ended in a confirmed desync
 ```
 
-Isso significa que as duas simulações divergiram. O processo de diagnóstico
-completo está em [05 — Determinismo](05-determinismo.md); em resumo:
+The two simulations diverged. Full diagnosis in
+[05 — Determinism](05-determinism.md); in short:
 
 ```bash
-# qual frame, e quais foram os dois checksums
+# which frame, and the two checksums
 jq 'select(.event=="desync")' artifacts/logs/*.jsonl
 
-# os dois peers rodavam o mesmo commit?
+# were both peers on the same commit?
 jq -r 'select(.record=="session_start") | .info.app_commit' artifacts/logs/*.jsonl
 ```
 
-Depois: reproduza com `just bench` na mesma semente e perfil; tente debug contra
-release; tente na arena antes do SFA3.
+Then: reproduce with `just bench` at the same seed and profile, try debug
+against release, and try the arena before the emulated game. If the arena is
+clean and the emulator is not, read the next section but one.
 
-## `effective_fps` bem abaixo de 60
+## `effective_fps` well below 60
 
-O peer não está conseguindo simular a 60 Hz.
+The peer cannot simulate at 60 Hz.
 
 ```bash
-# quanto do orçamento de 16,7 ms está sendo usado
+# how much of the 16 667 µs budget is in use
 curl -s http://127.0.0.1:9898/metrics | grep -E "advance_seconds|save_state_seconds"
 ```
 
-Para o SFA3 na EC2, a causa usual é `retro_serialize` num `t3.small`. Troque para
-`t3.medium` em `terraform.tfvars` e rode `just aws-up` de novo.
+On the EC2 instance with The Last Blade 2, the usual cause is `retro_serialize`
+on a `t3.small`. Switch to `t3.medium` in `terraform.tfvars` and run
+`just aws-up` again. The measured split is in [15 — Elastic](15-elastic.md):
+`advance` around 3 948 µs and `save_state` around 2 271 µs per frame.
 
-Localmente, verifique se não está rodando em build de debug — o `justfile` usa
-release, mas um `cargo run` manual sem `--release` é 10× mais lento.
+Locally, check you are not running a debug build. The `justfile` uses release,
+but a hand-typed `cargo run` without `--release` is about ten times slower.
 
-## O Prometheus não coleta nada
+## Prometheus is not collecting anything
 
 ```
 http://127.0.0.1:9898/metrics  down
 ```
 
-- **Nenhuma sessão rodando.** O exportador só existe enquanto há uma sessão. É o
-  estado normal entre execuções.
-- **A stack não está em rede de host.** O `docker-compose` usa `network_mode: host`
-  de propósito, para alcançar um exportador de loopback. Se você mudou para bridge,
-  ele não alcança — ver [06 — AWS](06-aws.md) para o motivo de não abrir o
-  exportador em `0.0.0.0`.
-- **Não é Linux.** Rede de host no Docker é Linux-only.
+- **No session running.** The exporter only exists while a session does. That is
+  the normal state between runs.
+- **The stack is not on host networking.** The `docker-compose` uses
+  `network_mode: host` on purpose, to reach a loopback exporter. On a bridge
+  network it cannot; see [06 — AWS](06-aws.md) for why the exporter is not bound
+  to `0.0.0.0`.
+- **Not Linux.** Docker host networking is Linux-only.
 
-## O cliente SDL não abre
+## The SDL client does not open
 
 ```bash
-echo $XDG_SESSION_TYPE     # esperado: wayland ou x11
+echo $XDG_SESSION_TYPE     # expected: wayland or x11
 ```
 
-Em TTY puro não há compositor e o SDL não tem onde desenhar. O `rollback-bot`
-(headless) funciona nessas condições e é o que os testes automatizados usam.
+On a bare TTY there is no compositor and SDL has nowhere to draw. `rollback-bot`
+is headless and works there, which is what the automated tests use.
 
-Se o gamepad não aparece, não é erro: o teclado é um dispositivo de entrada
-completo sozinho. O cliente imprime `gamepad: <nome>` quando encontra um.
+If no gamepad appears, that is not an error: the keyboard is a complete input
+device on its own. The client prints `gamepad: <name>` when it finds one.
 
 ## `LocalInputRefiled`
 
@@ -119,9 +134,9 @@ completo sozinho. O cliente imprime `gamepad: <nome>` quando encontra um.
 Error: local input for frame 1234 was queued twice with different values
 ```
 
-Bug no laço do chamador: ele enfileirou um input local durante um stall. O
-`SessionRunner` checa `would_stall()` antes de ler o controle exatamente para
-evitar isso. Se aparecer, é um laço customizado que pulou essa checagem.
+A bug in the calling loop: it queued a local input during a stall.
+`SessionRunner` checks `would_stall()` before reading the controller precisely
+to prevent this. If you see it, a custom loop skipped that check.
 
 ## `PeerContradiction`
 
@@ -129,10 +144,9 @@ evitar isso. Se aparecer, é um laço customizado que pulou essa checagem.
 Error: peer sent two different inputs for frame 1234
 ```
 
-O peer mandou dois valores diferentes para o mesmo frame. Isso não é artefato de
-rede — duplicação e reordenação são absorvidas silenciosamente. É um peer com
-bug, ou um datagrama forjado que passou pelo HMAC (o que significaria vazamento
-da chave).
+The peer sent two different values for the same frame. This is not a network
+artefact; duplication and reordering are absorbed silently. It is either a buggy
+peer or a forged datagram that passed the HMAC, which would mean the key leaked.
 
 ## `HistoryExhausted`
 
@@ -140,147 +154,174 @@ da chave).
 Error: cannot roll back to frame 1200: oldest saved state is 1208
 ```
 
-Um rollback precisou voltar mais fundo que o buffer de estados alcança. Não
-deveria acontecer: `SessionConfig::validate` exige `state_history > prediction_limit`.
+A rollback needed to reach further back than the state buffer goes. It should
+not happen: `SessionConfig::validate` requires
+`state_history > prediction_limit`.
 
-Se aparecer, ou a configuração foi construída contornando o validador, ou há um
-bug na contabilidade da profundidade de previsão. Foi exatamente esse erro que os
-testes de propriedade produziram ao encontrar o bug da condição de stall.
+If it does, either the configuration was built around the validator, or there is
+a bug in the prediction-depth bookkeeping. This is the exact error the property
+tests produced when they found the stall-condition bug.
 
-## `terraform apply` falha
+## `terraform apply` fails
 
-- **`InvalidClientTokenId`** — credenciais AWS erradas ou expiradas.
+- `InvalidClientTokenId`: wrong or expired AWS credentials.
   `aws sts get-caller-identity`.
-- **`UnauthorizedOperation`** — falta permissão IAM. O laboratório precisa de
-  EC2, VPC, S3, IAM e SSM.
-- **`AddressLimitExceeded`** — limite de Elastic IPs na região. Provavelmente há
-  EIPs órfãos de uma execução anterior; ver [11 — Cleanup](11-cleanup.md).
-- **`terraform.tfvars is missing`** — copie de `example.tfvars`.
+- `UnauthorizedOperation`: missing IAM permission. The lab needs EC2, VPC, S3,
+  IAM and SSM.
+- `AddressLimitExceeded`: Elastic IP limit in the region. Probably orphaned EIPs
+  from an earlier run; see [11 — Cleanup](11-cleanup.md).
+- `Invalid rule description`: an apostrophe or another character AWS rejects in a
+  security group description. `terraform validate` accepts it; only the API
+  refuses.
+- `terraform.tfvars is missing`: copy it from `example.tfvars`.
 
-## O build do FBNeo falha
+## The remote peer does not start
+
+`aws-up` fails loudly now, and the message says the infrastructure is up and
+costing money. The three failures seen in practice, all documented in
+[06 — AWS](06-aws.md):
+
+- `Illegal option -o pipefail` or `source: not found`: SSM runs `/bin/sh`, which
+  is dash on Ubuntu.
+- `Package 'awscli' has no installation candidate`: Ubuntu 24.04 dropped the
+  package, which killed `user_data` on its first line.
+- `cannot open /opt/rollback/env`: the command raced the bootstrap. `aws-up`
+  waits for `/opt/rollback/BOOTSTRAP_COMPLETE` now.
+
+To look at the instance directly:
+
+```bash
+aws ssm start-session --region eu-central-1 --target <instance-id>
+sudo tail -50 /var/log/rollback-bootstrap.log
+sudo journalctl -u rollback-bot -n 50
+```
+
+## The FBNeo build fails
 
 ```bash
 just build-core
 ```
 
-- **`No rule to make target`** — o commit pinado não tem `src/burner/libretro`.
-  Esse é exatamente o problema descrito em [09 — SFA3](09-sfa3.md): o port
-  libretro vive no fork `libretro/FBNeo`, não no upstream.
-- **Sem espaço** — a build precisa de ~5 GB. `docker system prune`.
-- **Lento** — 20 a 40 minutos numa máquina de 10 núcleos é esperado. Ajuste com
-  `JOBS=n`.
+- `No rule to make target`: the pinned commit has no `src/burner/libretro`. That
+  is the problem described in [09](09-the-last-blade-2.md): the libretro port
+  lives in the `libretro/FBNeo` fork, not upstream.
+- `kNetGame declaration not found`: the determinism patch could not apply. The
+  build fails on purpose rather than producing a core that desyncs. See
+  `docker/fbneo/determinism.md`.
+- Out of space: the build needs about 5 GB. `docker system prune`.
+- Slow: 20 to 40 minutes on a ten-core machine is expected. Tune with `JOBS=n`.
 
 ## `core reports a serialize size of zero`
 
 ```
-Error: loading ROM "/caminho/sfa3.zip"
+Error: loading ROM "/path/lastbld2.zip"
 Caused by: core reports a serialize size of zero, so no game is actually running.
 ```
 
-O core carregou, o ROM foi aceito, e nenhum jogo está rodando. O FBNeo retorna
-sucesso de `retro_load_game` mesmo com um romset inutilizável, então um estado de
-tamanho zero é como um set incompleto aparece aqui.
+The core loaded, the ROM was accepted, and no game is running. FBNeo returns
+success from `retro_load_game` even with an unusable romset, so a zero state
+size is how an incomplete set surfaces here.
 
-Causa quase sempre: **falta um arquivo**. Leia as linhas `core error:` logo
-abaixo do erro — o FBNeo nomeia cada arquivo que exigiu e não encontrou:
+The cause is almost always a missing file. Read the `core error:` lines just
+below: FBNeo names every file it required and could not find.
 
 ```
-core error: [FBNeo] ROM at index 20 with name sfa3.key and CRC 0x54fa39c6 is required
+core error: [FBNeo] ROM at index 128 with name sp-s3.sp1 and CRC 0x91b64be3 is required
 ```
 
-Os dois casos que produzem um zip aparentemente completo e mesmo assim não rodam:
+Two cases produce a zip that looks complete and still will not run:
 
-| Sintoma | Falta | Onde pôr |
+| Symptom | Missing | Where it goes |
 |---|---|---|
-| `sfa3.key ... is required` | chave CPS-2, 20 bytes, CRC `54fa39c6` | dentro do próprio `sfa3.zip` |
-| `sp-s3.sp1`, `sm1.sm1`, `sfix.sfix`, `000-lo.lo` | `neogeo.zip`, o BIOS do Neo Geo | ao lado do jogo, ou em `artifacts/system/` |
+| `sp-s3.sp1`, `sm1.sm1`, `sfix.sfix`, `000-lo.lo` | `neogeo.zip`, the Neo Geo BIOS | beside the game, or in `artifacts/system/` |
+| `sfa3.key ... is required` | the CPS-2 key, 20 bytes, CRC `54fa39c6` | inside `sfa3.zip` itself |
 
-Para ver tudo que o core disse, inclusive em quais caminhos ele procurou cada
+To see everything the core said, including which paths it searched for each
 romset:
 
 ```bash
-just inspect-core /caminho/do.zip
+just inspect-core /path/to.zip
 ```
 
-Isso imprime o log completo do core, os comandos de ambiente que ele pediu, e o
-tamanho do estado. Para conferir arquivo por arquivo, compare os CRCs do seu zip
-com o `RomDesc[]` do driver no FBNeo (`src/burn/drv/capcom/d_cps2.cpp` para
-CPS-2, `src/burn/drv/neogeo/d_neogeo.cpp` para Neo Geo).
+That prints the full core log, the environment commands it asked for, and the
+state size. To check file by file, compare your zip's CRCs against the driver's
+`RomDesc[]` in FBNeo: `src/burn/drv/neogeo/d_neogeo.cpp` for Neo Geo,
+`src/burn/drv/capcom/d_cps2.cpp` for CPS-2.
 
-## Desync no começo de toda sessão com emulador
+## Every emulated session desyncs at the start
 
-Se a arena nunca desincroniza e o jogo emulado sempre desincroniza — em
-particular **antes de qualquer input do jogador** — o problema não está no
-rollback. Está no core.
+If the arena never desyncs and the emulated game always does, particularly
+**before any player input**, the problem is not the rollback. It is the core.
 
 ```bash
-just check-determinism /caminho/lastbld2.zip
+just check-determinism /path/lastbld2.zip
 ```
 
-Isso roda o core duas vezes, em processos separados, com uma pausa deliberada
-entre eles, e compara o estado da máquina. A pausa é o teste: `time(NULL)` tem
-granularidade de um segundo, e duas execuções dentro do mesmo segundo concordam
-mesmo com um core dependente do relógio.
+That runs the core twice, in separate processes, with a deliberate pause between
+them, and compares machine state. The pause is the test: `time(NULL)` has
+one-second granularity, so two runs inside the same second agree even on a
+clock-dependent core.
 
-Se falhar, o core provavelmente não foi construído por `just build-core`:
+If it fails, the core was probably not built by `just build-core`:
 
 ```bash
-grep patches cores/fbneo-commit.txt     # esperado: patches=kNetGame=1
+grep patches cores/fbneo-commit.txt     # expected: patches=kNetGame=1
 ```
 
-Contexto completo em `docker/fbneo/determinism.md` e em
-[05 — Determinismo](05-determinismo.md).
+Background in `docker/fbneo/determinism.md` and
+[05 — Determinism](05-determinism.md).
 
-Outras causas de desync logo no início, em ordem de frequência:
+Other early-desync causes, in order of frequency:
 
-| Sintoma | Causa | Correção |
+| Symptom | Cause | Fix |
 |---|---|---|
-| desync no boot, core correto | NVRAM diferente entre peers | é apagada automaticamente; confira se os dois peers imprimiram `cleared stale machine state` |
-| `ROM hash mismatch` num jogo de Neo Geo | `neogeo.zip` diferente | o BIOS entra no hash; use o mesmo arquivo dos dois lados |
-| desync no meio de um menu | script de boot fora da janela | `just probe-boot` e compare com [09](09-sfa3.md) |
+| desync at boot, core is patched | different NVRAM between peers | it is cleared automatically; check both peers printed `cleared stale machine state` |
+| `ROM hash mismatch` on a Neo Geo game | different `neogeo.zip` | the BIOS is in the hash; use the same file on both sides |
+| desync in the middle of a menu | the boot script fell outside its window | `just probe-boot` and compare against [09](09-the-last-blade-2.md) |
 
-## O script de boot termina fora da partida
+## The boot script ends up outside the match
 
-O sintoma é uma sessão que roda, mede tudo, não desincroniza — e mostra a tela
-de atração em vez de uma luta. O script é cego: ele aperta os botões nos frames
-que mandaram e não verifica nada.
+The symptom is a session that runs, measures everything, does not desync, and
+shows the attract loop instead of a fight. The script is blind: it presses
+buttons on the frames it was told to and checks nothing.
 
 ```bash
-just probe-boot /caminho/lastbld2.zip lastblade2
+just probe-boot /path/lastbld2.zip lastblade2
 ```
 
-Abra `artifacts/probe/contact-sheet.png` e veja em que tela cada frame caiu. As
-janelas medidas estão em [09 — Jogos reais](09-sfa3.md); a do Last Blade 2 tem
-35 frames, então é fácil errar por pouco.
+Open `artifacts/probe/contact-sheet.png` and see which screen each frame landed
+on. The measured windows are in [09](09-the-last-blade-2.md). Note that the
+board wants menu buttons *held*, not tapped: a twelve-frame tap starts nothing
+at any frame.
 
-## O log do core não aparece
+## The core log is empty
 
 ```
 -- core log --
 (none -- the core did not ask for the log interface)
 ```
 
-O host oferece `GET_LOG_INTERFACE` através de um shim de C
-(`crates/rollback-libretro/src/log_shim.c`), porque `retro_log_printf_t` é
-variádica e Rust estável não define função variádica. Se o log sai vazio com o
-FBNeo, o shim não foi compilado — confira se o `build.rs` rodou e se há um
-compilador de C no `PATH`.
+The host offers `GET_LOG_INTERFACE` through a C shim
+(`crates/rollback-libretro/src/log_shim.c`), because `retro_log_printf_t` is
+variadic and stable Rust cannot define a variadic function. If the log comes
+back empty with FBNeo, the shim was not compiled: check that `build.rs` ran and
+that a C compiler is on `PATH`.
 
-## O relatório sai vazio
+## The report is empty
 
 ```
-0 sessão(ões) lidas de artifacts/logs
+0 session(s) read from artifacts/logs
 ```
 
-Nenhum `.jsonl` no diretório. Rode `just bench` ou `just collect` primeiro.
+No `.jsonl` in the directory. Run `just bench` or `just collect` first.
 
-Se houver arquivos mas eles aparecerem como incompletos, a sessão morreu antes do
-registro `session_end`. O relatório ainda usa o que chegou e marca
-`complete=false` — veja o final do arquivo para o último estado registrado.
+If there are files but they show as incomplete, the session died before writing
+`session_end`. The report still uses what arrived and marks `complete=false`;
+look at the end of the file for the last recorded state.
 
-## Como pedir ajuda de forma útil
+## Asking for help usefully
 
-Junte:
+Gather:
 
 ```bash
 just test 2>&1 | tail -40
@@ -289,5 +330,5 @@ curl -s http://127.0.0.1:9898/metrics | grep -v '^#'
 git rev-parse HEAD
 ```
 
-Os dois `session_start` mostram se os peers concordavam sobre commit, semente e
-configuração — que responde a maior parte das perguntas antes de serem feitas.
+The two `session_start` records show whether the peers agreed on commit, seed
+and configuration, which answers most questions before they are asked.

@@ -28,14 +28,14 @@
     {
       "id": 1,
       "type": "row",
-      "title": "Sessão",
+      "title": "Session",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Desync",
-      "description": "1 significa que dois checksums de frames confirmados divergiram. A sessão já terminou.",
+      "description": "1 means two confirmed-frame checksums disagreed. The session has already ended.",
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
       "targets": [{ "expr": "rollback_desync", "refId": "A" }],
       "fieldConfig": {
@@ -57,8 +57,8 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Profundidade de previsão",
-      "description": "Quantos frames à frente do peer estamos especulando agora. O limite é 8; encostar nele significa stall.",
+      "title": "Prediction depth",
+      "description": "How many frames ahead of the peer we are speculating. The limit is 8; touching it means a stall.",
       "gridPos": { "h": 4, "w": 5, "x": 4, "y": 1 },
       "targets": [{ "expr": "rollback_prediction_depth", "refId": "A" }],
       "fieldConfig": {
@@ -79,8 +79,8 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Acurácia da previsão",
-      "description": "Fração dos frames previstos que se confirmaram. 1 = nenhuma correção necessária.",
+      "title": "Prediction accuracy",
+      "description": "Fraction of predicted frames that held. 1 means no correction was needed.",
       "gridPos": { "h": 4, "w": 5, "x": 9, "y": 1 },
       "targets": [
         { "expr": "rollback_prediction_accuracy{peer=\"$peer\"}", "refId": "A" }
@@ -104,8 +104,8 @@
     {
       "id": 5,
       "type": "stat",
-      "title": "RTT suavizado",
-      "description": "Round-trip time. Não há latência unidirecional aqui: os relógios dos dois peers não são sincronizados.",
+      "title": "Smoothed RTT",
+      "description": "Round-trip time. There is no one-way latency here: the two peers' clocks are not synchronised.",
       "gridPos": { "h": 4, "w": 5, "x": 14, "y": 1 },
       "targets": [{ "expr": "rollback_srtt_seconds{peer=\"$peer\"}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } }
@@ -113,7 +113,7 @@
     {
       "id": 6,
       "type": "stat",
-      "title": "Tamanho do estado",
+      "title": "State size",
       "description": "Bytes de um snapshot. A arena tem 204; o SFA3 sob FBNeo tem alguns megabytes.",
       "gridPos": { "h": 4, "w": 5, "x": 19, "y": 1 },
       "targets": [{ "expr": "rollback_state_bytes{peer=\"$peer\"}", "refId": "A" }],
@@ -128,8 +128,8 @@
     {
       "id": 11,
       "type": "timeseries",
-      "title": "Rollbacks por segundo",
-      "description": "Cada rollback é uma previsão que não se confirmou. Comparar os dois peers: quem está atrás corrige mais.",
+      "title": "Rollbacks per second",
+      "description": "Each rollback is a prediction that did not hold. Compare the peers: whoever is ahead corrects more.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "targets": [
         { "expr": "rate(rollback_rollbacks_total[15s])", "legendFormat": "{{peer}}", "refId": "A" }
@@ -139,23 +139,23 @@
     {
       "id": 12,
       "type": "timeseries",
-      "title": "Profundidade do rollback",
-      "description": "Frames re-simulados por correção, e a profundidade máxima já vista.",
+      "title": "Rollback depth",
+      "description": "Re-simulated frames per correction, and the deepest seen so far.",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "targets": [
         {
           "expr": "rate(rollback_frames_resimulated_total[15s]) / clamp_min(rate(rollback_rollbacks_total[15s]), 0.001)",
-          "legendFormat": "média {{peer}}",
+          "legendFormat": "mean {{peer}}",
           "refId": "A"
         },
-        { "expr": "rollback_max_depth_frames", "legendFormat": "máx {{peer}}", "refId": "B" }
+        { "expr": "rollback_max_depth_frames", "legendFormat": "max {{peer}}", "refId": "B" }
       ],
       "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } } }
     },
     {
       "id": 13,
       "type": "timeseries",
-      "title": "Trabalho extra de simulação",
+      "title": "Extra simulation work",
       "description": "Frames re-simulados por frame apresentado. 0 = nenhum rollback; 1 = a CPU simulou tudo duas vezes.",
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
       "targets": [
@@ -171,7 +171,7 @@
       "id": 14,
       "type": "timeseries",
       "title": "Stalls",
-      "description": "Frames em que a janela de previsão encheu e a simulação parou para esperar o peer.",
+      "description": "Frames where the prediction window filled and the simulation stopped to wait for the peer.",
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
       "targets": [
         { "expr": "rate(rollback_stalls_total[15s])", "legendFormat": "{{peer}}", "refId": "A" }
@@ -181,13 +181,13 @@
     {
       "id": 20,
       "type": "row",
-      "title": "Rede",
+      "title": "Network",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 }
     },
     {
       "id": 21,
       "type": "timeseries",
-      "title": "RTT e variação",
+      "title": "RTT and variation",
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 22 },
       "targets": [
         { "expr": "rollback_srtt_seconds", "legendFormat": "srtt {{peer}}", "refId": "A" },
@@ -198,8 +198,8 @@
     {
       "id": 22,
       "type": "timeseries",
-      "title": "Perda, duplicação e reordenação",
-      "description": "A perda é inferida a partir das lacunas na sequência do peer; um datagrama atrasado aparece como perda até chegar.",
+      "title": "Loss, duplication and reordering",
+      "description": "Loss is inferred from gaps in the peer's sequence; a delayed datagram counts as lost until it arrives.",
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 22 },
       "targets": [
         { "expr": "rollback_loss_ratio", "legendFormat": "perda {{peer}}", "refId": "A" },
@@ -212,19 +212,19 @@
       "id": 23,
       "type": "timeseries",
       "title": "Bitrate",
-      "description": "Só inputs trafegam. Um InputBatch a 60 Hz com oito inputs repetidos cabe em ~35 kbit/s.",
+      "description": "Only inputs travel. An InputBatch at 60 Hz with eight repeated inputs fits in ~35 kbit/s.",
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 29 },
       "targets": [
         { "expr": "rollback_send_bitrate_bps", "legendFormat": "envio", "refId": "A" },
-        { "expr": "rollback_receive_bitrate_bps", "legendFormat": "recepção", "refId": "B" }
+        { "expr": "rollback_receive_bitrate_bps", "legendFormat": "received", "refId": "B" }
       ],
       "fieldConfig": { "defaults": { "unit": "bps", "custom": { "fillOpacity": 10 } } }
     },
     {
       "id": 24,
       "type": "timeseries",
-      "title": "Datagramas rejeitados",
-      "description": "Falhas de HMAC e pacotes malformados. Diferente de zero em produção significa que alguém está mandando lixo na porta.",
+      "title": "Rejected datagrams",
+      "description": "HMAC failures and malformed packets. Non-zero outside a test means someone is sending rubbish at the port.",
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 29 },
       "targets": [
         { "expr": "rate(rollback_auth_failures_total[30s])", "legendFormat": "hmac", "refId": "A" },
@@ -235,14 +235,14 @@
     {
       "id": 30,
       "type": "row",
-      "title": "Custo de execução",
+      "title": "Cost of running",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 }
     },
     {
       "id": 31,
       "type": "timeseries",
-      "title": "Tempo por frame",
-      "description": "Quanto de cada frame vai em advance_frame, save_state e load_state. A 60 Hz o orçamento total é 16,7 ms.",
+      "title": "Time per frame",
+      "description": "How much of each frame goes into advance_frame, save_state and load_state. At 60 Hz the budget is 16.7 ms.",
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 37 },
       "targets": [
         { "expr": "rate(rollback_advance_seconds_total[15s]) / clamp_min(rate(rollback_frames_presented_total[15s]) + rate(rollback_frames_resimulated_total[15s]), 0.001)", "legendFormat": "advance", "refId": "A" },
@@ -254,7 +254,7 @@
     {
       "id": 32,
       "type": "timeseries",
-      "title": "CPU e memória do processo",
+      "title": "Process CPU and memory",
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 37 },
       "targets": [
         { "expr": "rate(process_cpu_seconds_total[30s])", "legendFormat": "cpu", "refId": "A" },

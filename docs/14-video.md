@@ -1,136 +1,146 @@
-# 14 — Vídeo: ver o rollback acontecendo
+# 14 — Video: watching rollback happen
 
-> Termos como *rollback*, *stall*, *profundidade* e *perfil* estão definidos em
-> [00 — Glossário](00-glossario.md).
+> Terms like *rollback*, *stall*, *depth* and *profile* are defined in
+> [00 — Glossary](00-glossary.md).
 
-## O problema de documentar rollback
+## The problem with documenting rollback
 
-Rollback funciona quando você **não** percebe. A correção acontece dentro de um
-frame de tela; o jogador vê um jogo contínuo. Gravar uma sessão e assistir prova
-que o jogo rodou, e mais nada.
+Rollback works when you **cannot** tell. The correction happens inside one
+display frame; the player sees a continuous game. Recording a session and
+watching it proves the game ran and nothing else.
 
-O que transforma a gravação em documentação é pôr a telemetria ao lado dela. O
-log JSONL já registra cada frame apresentado, cada rollback com sua
-profundidade, cada stall — então dá para queimar isso no vídeo, no frame exato
-em que aconteceu.
+What turns a recording into documentation is putting the telemetry beside it.
+The JSONL log already records every presented frame, every rollback with its
+depth, every stall, so it can be burned into the video on the exact frame it
+happened.
 
-O resultado é o ponto: **uma luta perfeitamente fluida enquanto o contador
-marca mil correções passando.**
+![delay20, the peer doing the work](media/rollback-delay20.gif)
 
-## Como funciona
+That is the point: a perfectly smooth fight while the counter runs past a
+hundred corrections.
+
+## How it works
 
 ```
-rollback-bot --record sessao.mp4        frames apresentados -> ffmpeg -> H.264
+rollback-bot --record session.mp4     presented frames -> ffmpeg -> H.264
         |
-        +-- sessao.jsonl                eventos por frame
+        +-- session.jsonl             per-frame events
                 |
                 v
-   annotate-video.py                    JSONL -> legenda ASS -> queima no vídeo
+   annotate-video.py                  JSONL -> ASS subtitles -> burned in
 ```
 
-### Os frames vêm da simulação, não da tela
+### The frames come from the simulation, not the screen
 
-Um gravador de tela captura o que o compositor mostrou, na taxa em que ele
-compôs. Isso é inútil aqui, porque a afirmação interessante é sobre **quais**
-frames chegaram ao jogador.
+A screen recorder captures what the compositor happened to show, at whatever
+rate it happened to composite. That is useless here, because the interesting
+claim is about **which** frames reached the player.
 
-O `--record` grava exatamente os frames produzidos em `OutputMode::Present`: um
-por frame avançado, nenhum dos re-simulados. Então o arquivo é, frame a frame, o
-que o jogador viu — e uma gravação de 60 Hz de uma sessão que sustentou 60 Hz é
-prova de que ela sustentou.
+`--record` writes exactly the frames produced in `OutputMode::Present`: one per
+advanced frame, none of the re-simulated ones. So the file is, frame for frame,
+what the player saw, and a 60 Hz recording of a session that held 60 Hz is proof
+it held it.
 
-Frames com geometria diferente da declarada são **descartados e contados**, não
-escritos: um frame curto deslocaria todos os bytes seguintes e transformaria o
-resto do vídeo em ruído.
+Frames whose geometry differs from what ffmpeg was told are **counted and
+dropped**, not written. A short frame would shift every byte after it and turn
+the rest of the video into noise.
 
-### A telemetria fica numa faixa, não sobre o jogo
+### Telemetry goes in a band, not over the game
 
-Desenhada por cima, colidia com o HUD do próprio jogo — barra de vida e
-cronômetro moram exatamente no mesmo canto, e os dois ficavam ilegíveis. A faixa
-custa um pouco de altura e mantém a saída do emulador intocada, o que também
-significa que o vídeo continua mostrando o que o jogador de fato via.
+Drawn on top, it collided with the game's own HUD. Health bars and the round
+timer live in exactly that corner, and both became unreadable. The band costs a
+little height and leaves the emulator's output untouched, which also means the
+video still shows what the player actually saw.
 
-O marcador `ROLLBACK -N` fica sobre a imagem, porque ali ele é informação
-temporal, e some em 0,25 s. Stalls usam o estilo barulhento e duram o que
-duraram.
+The `ROLLBACK -N` marker stays over the picture, because there it is temporal
+information, and it clears after 0.25 s. Stalls use the loud style and last as
+long as they lasted.
 
-## Gerar os vídeos
+## Making them
 
 ```bash
-just record-scenarios /caminho/lastbld2.zip
-just record-scenarios /caminho/lastbld2.zip 120 "natural combined"
+just record-scenarios /path/lastbld2.zip
+just record-scenarios /path/lastbld2.zip 120 "natural combined"
 ```
 
-Sai em `artifacts/video/`: para cada perfil, um vídeo por peer e um lado a lado.
+Output lands in `artifacts/video/`: one video per peer per profile, plus a
+side-by-side.
 
-Os **dois** peers são gravados de propósito. Sob qualquer perfil com atraso os
-dois lados fazem quantidades absurdamente diferentes de trabalho, e um vídeo de
-um peer só mostraria uma luta fluida e esconderia o fenômeno inteiro.
+**Both** peers are recorded deliberately. Under any profile with delay the two
+sides do wildly different amounts of work, and a single-peer video would show a
+smooth fight and hide the entire phenomenon.
 
-Para anotar uma gravação avulsa:
+To annotate a recording you already have:
 
 ```bash
-just annotate bruto.mp4 sessao.jsonl saida.mp4 "rótulo"
+just annotate raw.mp4 session.jsonl out.mp4 "label"
 ```
 
-## O que cada vídeo mostra
+## What each one shows
 
-Gravações de 90 s por perfil, bot contra bot em loopback, semente 4242.
+90 s per profile, bot against bot on loopback, seed 4242.
 
-| Vídeo | P1 | P2 | O que observar |
+| Video | P1 | P2 | What to watch |
 |---|---|---|---|
-| `natural-both` | 0 rollbacks | 0 rollbacks | O controle. Nada acontece: os inputs chegam antes de serem necessários. |
-| `delay20-both` | **0** | **260**, 40 stalls | A assimetria. Mesma luta, mesmo frame, e só um lado trabalha. |
-| `jitter30-both` | 0 | 260, 39 stalls | Igual ao anterior a olho nu — jitter não é pior que atraso, para rollback. |
-| `loss2-both` | 0 | **5** | Perda quase não vira rollback. A redundância de oito inputs entrega o input perdido antes de ele fazer falta. |
-| `combined-both` | 65 | 259, 40 stalls | Os dois lados trabalhando, e os stalls visíveis. |
-| `aws-madrid-frankfurt-both` | **544**, 133 stalls | 13 | O link real, Madri ↔ Frankfurt. |
+| `natural-both` | 0 rollbacks | 0 rollbacks | The control. Nothing happens: inputs arrive before they are needed. |
+| `delay20-both` | 0 | 260, 40 stalls | The asymmetry. Same fight, same frame, one side doing all the work. |
+| `jitter30-both` | 0 | 260, 39 stalls | Indistinguishable by eye from the last one. Jitter is not worse than delay for rollback. |
+| `loss2-both` | 0 | 5 | Loss barely becomes rollback. The redundancy delivers the lost input before it is missed. |
+| `combined-both` | 65 | 259, 40 stalls | Both sides working, and stalls you can see. |
+| `aws-madrid-frankfurt-both` | 544, 133 stalls | 13 | The real link. |
 
-### O frame que resume o projeto
+### The real link
 
-Em qualquer vídeo lado a lado, pause em qualquer momento: **as duas metades
-mostram a mesma imagem, pixel a pixel**, enquanto os contadores mostram números
-completamente diferentes.
+![Madrid to Frankfurt](media/rollback-real-link.gif)
 
-Isso é o laboratório inteiro numa imagem. As duas máquinas rodam o mesmo jogo. O
-trabalho que cada uma faz para conseguir isso não tem nada a ver com o que a
-outra faz.
+Madrid driving P1 against an EC2 instance in Frankfurt. Depth reaching 6, the
+prediction limit touched at 8, and the fight running at 60 Hz through all of it.
 
-## Uma ressalva metodológica importante
+### The frame that sums the project up
 
-**Gravar custa CPU, e a CPU muda a medição.**
+Pause any side-by-side at any moment. **Both halves show the same image, pixel
+for pixel**, while the counters show completely different numbers.
 
-Cada `ffmpeg` consome ~65% de um núcleo codificando 60 fps. Numa gravação
-loopback isso significa dois emuladores mais dois codificadores disputando a
-mesma máquina, e o efeito aparece nos números:
+Two machines running the same game. The work each one does to manage it has
+nothing to do with the other.
+
+## A methodological caveat
+
+**Recording costs CPU, and CPU moves the measurement.**
+
+Each `ffmpeg` takes about 65% of a core encoding 60 fps. On a loopback recording
+that means two emulators and two encoders competing for one machine, and it
+shows up in the numbers:
 
 | `natural`, loopback | RTT p50 |
 |---|---|
-| sessão normal | **16,6 ms** |
-| sessão gravada | **38,0 ms** |
+| ordinary session | 16.6 ms |
+| recorded session | 38.0 ms |
 
-O RTT mais que dobrou, e não foi a rede — foi o laço de frame ficando mais lento
-porque a máquina estava ocupada.
+RTT more than doubled, and none of it was the network. The frame loop got slower
+because the machine was busy.
 
-Consequência prática, e vale respeitá-la:
+So:
 
-- **Os números de [08 — Experimentos](08-experimentos.md) vêm de sessões sem
-  gravação.** São a medição.
-- **Os vídeos são ilustração.** Mostram o comportamento com fidelidade —
-  assimetria, stalls, a sincronia frame a frame — mas os contadores neles estão
-  inflados pelo custo de gravar.
+- The numbers in [08 — Experiments](08-experiments.md) come from sessions
+  **without** recording. Those are the measurement.
+- The videos are illustration. They show the behaviour faithfully, including the
+  asymmetry, the stalls and the frame-for-frame agreement, but the counters in
+  them are inflated by the cost of recording.
 
-Nunca cite um número lido de um vídeo. Cite o `summary.csv` da sessão
-equivalente sem gravação.
+Never quote a number read off a video. Quote `summary.csv` from the equivalent
+un-recorded session.
 
-## Limitações
+## Limits
 
-- **Só simulações emuladas.** A arena não tem framebuffer — ela é simulada, não
-  desenhada, fora do cliente SDL. Gravar a arena exigiria um rasterizador
-  próprio no bot, que ainda não existe.
-- **Sem áudio.** O host descarta áudio durante a re-simulação, e sincronizar o
-  que sobra com o vídeo é um problema em si. Os vídeos são mudos.
-- **Sem pixel aspect.** A saída de arcade não é de pixel quadrado; o vídeo é
-  escalado 3× com vizinho mais próximo e nada mais. Fica "esticado" em relação a
-  um CRT, e isso é deliberado: corrigir exigiria escolher uma proporção que o
-  core não informou.
+**Emulated simulations only.** The arena has no framebuffer; it is simulated,
+not drawn, outside the SDL client. Recording it would need a software rasteriser
+in the bot, which does not exist.
+
+**No audio.** The host discards audio during re-simulation, and synchronising
+what remains against the video is a problem of its own. The videos are silent.
+
+**No pixel aspect correction.** Arcade output is not square-pixel. The video is
+scaled 3× with nearest-neighbour and nothing else, so it looks stretched
+compared to a CRT. That is deliberate: correcting it would mean choosing a ratio
+the core never reported.

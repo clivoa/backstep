@@ -1,17 +1,17 @@
 # 11 — Cleanup
 
-## A ordem importa
+## The order matters
 
 ```bash
-just collect     # PRIMEIRO
-just aws-down    # DEPOIS
+just collect     # FIRST
+just aws-down    # THEN
 ```
 
-`collect` baixa os logs do peer remoto do S3. `aws-down` destrói o bucket. Os
-logs remotos **não existem em nenhum outro lugar** — a instância vai embora com
-eles.
+`collect` pulls the remote peer's logs and recordings down from S3. `aws-down`
+destroys the bucket. The remote logs exist nowhere else, and the instance goes
+away with them.
 
-Por isso `aws-down` se recusa a rodar se `artifacts/logs` estiver vazio:
+So `aws-down` refuses to run when `artifacts/logs` is empty:
 
 ```
 !!! artifacts/logs is empty. 'just collect' has not run.
@@ -19,111 +19,130 @@ Por isso `aws-down` se recusa a rodar se `artifacts/logs` estiver vazio:
 Run 'just collect' first, or re-run with FORCE=1 to discard them.
 ```
 
-`FORCE=1 just aws-down` descarta conscientemente. É uma escolha, não um acidente.
+`FORCE=1 just aws-down` discards them deliberately. That is a choice, not an
+accident.
 
-## O que `aws-down` faz
+## What `aws-down` does
 
-1. Verifica se `collect` já rodou.
-2. Esvazia o bucket explicitamente — **ROM, binários e logs remotos**.
+1. Checks that `collect` has run.
+2. Empties the bucket explicitly: ROM, BIOS, binaries, remote logs, recordings.
 3. `terraform destroy -auto-approve`.
-4. Apaga a cópia local da chave de sessão (`artifacts/session.key`).
+4. Deletes the local copy of the session key (`artifacts/session.key`).
 
-O passo 2 é redundante com `force_destroy = true`, e existe mesmo assim: o
-bucket contém a ROM de alguém, e deixá-la para trás numa conta AWS não é
-aceitável. Um `terraform destroy` que falhe por qualquer motivo não deve deixar a
-ROM parada lá.
+Step 2 is redundant with `force_destroy = true` and exists anyway. The bucket
+holds somebody's ROM, and leaving it behind in an AWS account is not acceptable.
+A `terraform destroy` that fails for any reason should not leave the ROM sitting
+there.
 
-## Conferindo que sumiu
+## Confirming it is gone
 
-`aws-down` imprime os comandos no fim. Rode-os:
+`aws-down` prints these at the end. Run them.
 
 ```bash
 REGION=eu-central-1
 
-# Nenhuma instância viva
+# No live instances
 aws ec2 describe-instances --region $REGION \
   --filters Name=tag:Project,Values=rollback-netcode \
             Name=instance-state-name,Values=running,pending,stopping,stopped \
   --query 'Reservations[].Instances[].InstanceId'
 
-# Nenhum bucket
+# No bucket
 aws s3 ls | grep rollback-netcode
 
-# Nenhum Elastic IP ocioso  <-- este é o que custa dinheiro
+# No idle Elastic IP  <-- this is the one that costs money
 aws ec2 describe-addresses --region $REGION \
   --query 'Addresses[?AssociationId==`null`].[PublicIp,AllocationId]'
 
-# Nenhum volume órfão
+# No orphaned volumes
 aws ec2 describe-volumes --region $REGION \
   --filters Name=status,Values=available \
   --query 'Volumes[].[VolumeId,Size]'
 
-# Nenhuma VPC do laboratório
+# No lab VPC
 aws ec2 describe-vpcs --region $REGION \
   --filters Name=tag:Project,Values=rollback-netcode \
   --query 'Vpcs[].VpcId'
 
-# O parâmetro da chave
+# The key parameter
 aws ssm get-parameter --region $REGION --name /rollback-netcode/session-key \
   2>&1 | head -1
 ```
 
-Todos devem retornar vazio, ou `ParameterNotFound` no último.
+All should come back empty, or `ParameterNotFound` for the last one.
 
-Todos os recursos têm a tag `Project=rollback-netcode`, então essa é a busca que
-encontra qualquer coisa deixada para trás.
+Every resource carries the tag `Project=rollback-netcode`, so that is the search
+that finds anything left behind.
 
-## Se o destroy falhar no meio
+## If the destroy fails partway
 
-O modo de falha mais comum é o Terraform não conseguir apagar a VPC porque algo
-ainda está preso a ela (uma ENI, um EIP). Rode de novo:
+The usual failure is Terraform being unable to delete the VPC because something
+is still attached to it, an ENI or an EIP. Run it again:
 
 ```bash
 terraform -chdir=terraform destroy -auto-approve
 ```
 
-Se persistir, o que costuma sobrar, em ordem de custo:
+If it persists, what tends to survive, in order of cost:
 
-1. **Elastic IP não associado** — ~US$ 3,60/mês. Libere:
+1. An unattached Elastic IP, about US$ 3.60/month.
    `aws ec2 release-address --region eu-central-1 --allocation-id eipalloc-...`
-2. **Volume EBS disponível** — `aws ec2 delete-volume --volume-id vol-...`
-3. **Interface de rede** — `aws ec2 delete-network-interface --network-interface-id eni-...`
-4. **Bucket com objetos** — `aws s3 rb s3://... --force`
+2. An available EBS volume. `aws ec2 delete-volume --volume-id vol-...`
+3. A network interface.
+   `aws ec2 delete-network-interface --network-interface-id eni-...`
+4. A bucket with objects. `aws s3 rb s3://... --force`
 
-Depois rode `terraform destroy` mais uma vez para o estado ficar consistente.
+Then run `terraform destroy` once more so the state is consistent.
 
-## Limpeza local
+## Local cleanup
 
 ```bash
-just clean-logs   # apaga artifacts/logs, artifacts/report e artifacts/e2e
-just clean        # o acima + cargo clean
+just clean-logs   # deletes artifacts/logs, artifacts/report, artifacts/e2e
+just clean        # the above plus cargo clean
+just elastic-down # if the Elastic stack is up
+just local-down   # if Prometheus and Grafana are up
 ```
 
-O que fica de propósito:
+Two things survive on purpose:
 
-- `cores/fbneo_libretro.so` — leva 30 minutos para recompilar, não é apagado por
-  descuido. Remova à mão se quiser.
-- `terraform/terraform.tfstate` — apagar isso com recursos vivos **órfã tudo**.
-  Só remova depois de confirmar que o destroy terminou.
+`cores/fbneo_libretro.so` takes half an hour to rebuild and is not deleted by
+accident. Remove it by hand if you want to.
 
-## O que nunca esteve no repositório
+`terraform/terraform.tfstate` orphans everything if you delete it while
+resources are alive. Only remove it after confirming the destroy finished.
 
-- ROMs. `*.zip` está no `.gitignore` e nenhum passo do laboratório copia a ROM
-  para dentro da árvore de fontes.
-- Savestates. `artifacts/` inteiro está ignorado.
-- Chaves. `session-key*` e `*.tfvars` (exceto `example.tfvars`) estão ignorados.
-- Relatórios pessoais. Ficam em `artifacts/report/`, ignorado.
+Recordings under `artifacts/video/` are not touched by `clean-logs` either. A
+five-profile run is about a gigabyte, so delete them when you are done looking.
 
-Vale conferir antes de publicar qualquer coisa:
+## What was never in the repository
+
+ROMs and the BIOS. `*.zip` is gitignored and no step of the lab copies a ROM
+into the source tree.
+
+Savestates. All of `artifacts/` is ignored.
+
+Keys. `session-key*` and `*.tfvars` (except `example.tfvars`) are ignored.
+
+Personal reports and recordings. They live under `artifacts/`, ignored.
+
+Worth checking before publishing anything:
 
 ```bash
 git status --porcelain --ignored | grep '^!!' | head -20
 ```
 
-## Checklist de fim de sessão
+For a stronger check before pushing somewhere public, search the whole history
+rather than the working tree:
 
-- [ ] `just collect` rodou e `artifacts/logs` tem arquivos dos **dois** peers
-- [ ] `just aws-down` terminou sem erro
-- [ ] Os seis comandos de verificação acima retornam vazio
-- [ ] `artifacts/session.key` não existe mais
-- [ ] `just local-down`, se a stack de observabilidade estiver rodando
+```bash
+git log --all --pretty=format: --name-only --diff-filter=A | sort -u \
+  | grep -iE '\.zip$|\.so$|\.mp4$|session\.key|tfstate'
+```
+
+## End-of-session checklist
+
+- [ ] `just collect` ran, and `artifacts/logs` has files from **both** peers
+- [ ] `just aws-down` finished without error
+- [ ] The six verification commands above all return empty
+- [ ] `artifacts/session.key` no longer exists
+- [ ] `just local-down` and `just elastic-down`, if either stack is up

@@ -77,7 +77,7 @@ struct Args {
     rom: Option<PathBuf>,
 
     /// Directory FBNeo reads NVRAM and settings from. Must be identical on
-    /// both peers -- see docs/05-determinismo.md.
+    /// both peers -- see docs/05-determinism.md.
     #[arg(long, default_value = "artifacts/system")]
     system_dir: PathBuf,
 

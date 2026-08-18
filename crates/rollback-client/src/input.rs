@@ -19,7 +19,7 @@ use sdl2::keyboard::{KeyboardState, Scancode};
 /// is a confusing way to discover your hardware is worn out.
 const AXIS_THRESHOLD: i16 = i16::MAX / 2;
 
-/// The keyboard layout. Documented in `docs/04-uso-local.md`.
+/// The keyboard layout. Documented in `docs/04-running-locally.md`.
 const KEYS: &[(Scancode, Button)] = &[
     (Scancode::W, Button::Up),
     (Scancode::Up, Button::Up),

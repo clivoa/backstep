@@ -1,131 +1,138 @@
 # 07 — Dashboard
 
-> O que cada métrica significa e como lê-la está em
-> [00 — Glossário: métricas](00-glossario.md#as-métricas-que-o-laboratório-reporta).
+> What each metric means and how to read it is in
+> [00 — Glossary: metrics](00-glossary.md#the-metrics-this-lab-reports).
 
-## Subir
+## Bringing it up
 
 ```bash
 just local-up
 ```
 
-- Grafana: <http://127.0.0.1:3000> (acesso anônimo, dashboard já provisionado)
+- Grafana: <http://127.0.0.1:3000> (anonymous access, dashboard provisioned)
 - Prometheus: <http://127.0.0.1:9090>
-- Exportador: <http://127.0.0.1:9898/metrics> (só existe com uma sessão rodando)
+- Exporter: <http://127.0.0.1:9898/metrics> (only exists while a session runs)
 
-Numa bancada local com dois peers, o segundo exporta em `127.0.0.1:9899` e o
-Prometheus raspa os dois, com os labels `instance="local"` e
+On a local bench with two peers, the second exports on `127.0.0.1:9899` and
+Prometheus scrapes both, labelled `instance="local"` and
 `instance="local-peer2"`.
 
-Tudo escuta em loopback. Isso é intencional e está explicado em
+Everything listens on loopback. That is deliberate, and the reasoning is in
 [06 — AWS](06-aws.md).
 
-## Como o peer remoto aparece
+For picking a single session apart after the fact rather than watching one live,
+see [15 — Elastic](15-elastic.md). Different tool, different question.
 
-O Prometheus **não** raspa a EC2. Não há porta de métricas aberta lá.
+## How the remote peer shows up
 
-Cada peer manda ao outro um `TelemetrySummary` a cada 60 frames pelo próprio link
-da sessão. O exportador local re-publica esses números com o label
-`peer="remote"`, ao lado dos seus com `peer="local"`.
+Prometheus does **not** scrape the EC2 instance. There is no metrics port open
+there.
 
-Consequência prática: `rollback_rollbacks_total{peer="remote"}` é **o que o peer
-remoto diz sobre si mesmo**, atrasado de até um segundo. É a informação certa
-para comparar os dois lados, e não é a mesma coisa que raspar a instância.
+Each peer sends the other a `TelemetrySummary` every 60 frames over the session's
+own link. The local exporter republishes those numbers labelled
+`peer="remote"`, alongside its own labelled `peer="local"`.
 
-## O que cada painel significa
+Practical consequence: `rollback_rollbacks_total{peer="remote"}` is **what the
+remote peer says about itself**, up to a second stale. That is the right
+information for comparing the two sides, and it is not the same thing as
+scraping the instance.
 
-### Sessão
+## What each panel means
 
-| Painel | Leitura |
+### Session
+
+| Panel | Reading |
 |---|---|
-| **Desync** | 0 = ok. 1 = dois checksums de frames confirmados divergiram e a sessão acabou. Não há estado intermediário. |
-| **Profundidade de previsão** | Quantos frames à frente do peer estamos especulando. O limite é 8. Encostar nele = stall. |
-| **Acurácia da previsão** | Fração dos chutes que se confirmaram. Abaixo de ~0,85 sob latência moderada indica que o adversário está mexendo muito, ou que o link piorou. |
-| **RTT suavizado** | SRTT do RFC 6298. Não existe latência unidirecional aqui — ver [03](03-protocolo.md). |
-| **Tamanho do estado** | 204 bytes na arena; alguns megabytes no SFA3. |
+| **Desync** | 0 = fine. 1 = two confirmed-frame checksums disagreed and the session ended. There is no middle state. |
+| **Prediction depth** | How many frames ahead of the peer we are speculating. The limit is 8. Touching it means a stall. |
+| **Prediction accuracy** | Fraction of guesses that held. Below ~0.85 under moderate latency means the opponent is moving a lot, or the link got worse. |
+| **Smoothed RTT** | RFC 6298 SRTT. There is no one-way latency here — see [03](03-protocol.md). |
+| **State size** | 204 bytes in the arena; 415 155 in The Last Blade 2. |
 
 ### Rollback
 
-| Painel | Leitura |
+| Panel | Reading |
 |---|---|
-| **Rollbacks por segundo** | Cada um é uma previsão que não se confirmou. Compare os dois peers: quem está atrás corrige mais. |
-| **Profundidade do rollback** | Média (frames re-simulados ÷ rollbacks) e o máximo já visto. O máximo não pode passar do limite de previsão. |
-| **Trabalho extra de simulação** | Frames re-simulados por frame apresentado. 0 = nenhum rollback; 1 = a CPU simulou tudo duas vezes. É o custo de CPU do rollback, direto. |
-| **Stalls** | Frames em que a janela encheu e a simulação parou. Diferente de zero significa que o peer não está acompanhando. |
+| **Rollbacks per second** | Each one is a prediction that did not hold. Compare the two peers: whoever is ahead corrects more. |
+| **Rollback depth** | Mean (re-simulated frames ÷ rollbacks) and the highest seen. The maximum cannot exceed the prediction limit. |
+| **Extra simulation work** | Re-simulated frames per presented frame. 0 = no rollbacks; 1 = the CPU simulated everything twice. This is rollback's CPU cost, directly. |
+| **Stalls** | Frames where the window filled and the simulation stopped. Non-zero means the peer is not keeping up. |
 
-### Rede
+### Network
 
-| Painel | Leitura |
+| Panel | Reading |
 |---|---|
-| **RTT e variação** | Sob `jitter30`, a variação é o número interessante. |
-| **Perda, duplicação, reordenação** | A perda é **inferida** por lacunas de sequência; um datagrama atrasado aparece como perda até chegar, e então a estimativa se corrige. |
-| **Bitrate** | Só inputs trafegam. Um `InputBatch` a 60 Hz com 8 inputs repetidos dá ~35 kbit/s. Se estiver muito acima, algo está mandando mais do que deveria. |
-| **Datagramas rejeitados** | Falhas de HMAC e pacotes malformados. Diferente de zero fora de teste significa que alguém está mandando lixo na porta. |
+| **RTT and variation** | Under `jitter30`, the variation is the interesting number. |
+| **Loss, duplication, reordering** | Loss is **inferred** from sequence gaps; a delayed datagram looks lost until it arrives, then the estimate corrects itself. |
+| **Bitrate** | Only inputs travel. An `InputBatch` at 60 Hz with eight repeated inputs is ~35 kbit/s. Much above that and something is sending more than it should. |
+| **Rejected datagrams** | HMAC failures and malformed packets. Non-zero outside a test means someone is sending rubbish at the port. |
 
-### Custo de execução
+### Cost of running
 
-| Painel | Leitura |
+| Panel | Reading |
 |---|---|
-| **Tempo por frame** | Quanto de cada frame vai em `advance_frame`, `save_state` e `load_state`. A 60 Hz o orçamento é 16,7 ms; queira ficar abaixo de ~8 ms para caber o pior caso de rollback. |
-| **CPU e memória** | Lidos de `/proc/self/stat` e `/proc/self/statm` a cada 30 frames. |
+| **Time per frame** | How much of each frame goes into `advance_frame`, `save_state` and `load_state`. The budget at 60 Hz is 16 667 µs; you want to stay under about half of it so the worst-case rollback fits. |
+| **CPU and memory** | Read from `/proc/self/stat` and `/proc/self/statm` every 30 frames. |
 
-## Assinaturas visuais
+On The Last Blade 2 those two panels are the whole cost argument: `advance` runs
+about 3 948 µs and `save_state` about 2 271 µs per presented frame, which is 37%
+of the budget before any rollback happens at all.
 
-**Sessão saudável sob `delay20`:** profundidade de previsão estável em 2–3,
-acurácia acima de 0,9, rollbacks constantes mas rasos (profundidade média perto de
-1–2), stalls em zero, perda em zero.
+## Visual signatures
 
-**`loss2` funcionando como projetado:** perda inferida oscilando perto de 2%, e os
-rollbacks **não** acompanhando. É a redundância de 8 inputs fazendo o trabalho: o
-input perdido chega no datagrama seguinte, antes de ser necessário.
+**A healthy session under `delay20`:** prediction depth steady at 2–3, accuracy
+above 0.9, rollbacks constant but shallow, stalls at zero, loss at zero.
 
-**O peer não está acompanhando:** profundidade de previsão colada em 8, stalls
-subindo, e `effective_fps` abaixo de 60. Ou a rede piorou, ou a instância é
-pequena demais para a simulação.
+**`loss2` behaving as designed:** inferred loss hovering near 2%, and rollbacks
+**not** following it. That is the eight-input redundancy doing its job: the lost
+input arrives in the next datagram, before it is needed. Every rollback under
+this profile is depth 1.
 
-**Desync:** o painel vira vermelho e todos os contadores param. A sessão acabou;
-o JSONL tem o evento com os dois checksums e o número do frame.
+**The peer is not keeping up:** prediction depth pinned at 8, stalls climbing,
+`effective_fps` below 60. Either the network got worse or the instance is too
+small for the simulation.
 
-## Consultas úteis
+**Desync:** the panel goes red and every counter stops. The session is over; the
+JSONL has the event with both checksums and the frame number.
+
+## Useful queries
 
 ```promql
-# custo do rollback em CPU
+# rollback's CPU cost
 rate(rollback_frames_resimulated_total[30s])
   / clamp_min(rate(rollback_frames_presented_total[30s]), 0.001)
 
-# os dois peers lado a lado
+# both peers side by side
 rollback_rollbacks_total
 
-# quanto do orçamento de frame está sendo usado
+# how much of the frame budget is in use
 rate(rollback_advance_seconds_total[15s])
   / clamp_min(rate(rollback_frames_presented_total[15s])
             + rate(rollback_frames_resimulated_total[15s]), 0.001)
 
-# a sessão está de fato a 60 Hz?
+# is the session actually at 60 Hz?
 rate(rollback_frames_presented_total{peer="local"}[30s])
 ```
 
-## O dashboard é versionado
+## The dashboard is version controlled
 
-`ops/grafana/dashboards/rollback.json` é montado somente-leitura, com
-`allowUiUpdates: false` e `disableDeletion: true`. O dashboard faz parte do
-experimento; ele não deve derivar no navegador de alguém e depois não ser
-reproduzível.
+`ops/grafana/dashboards/rollback.json` is mounted read-only, with
+`allowUiUpdates: false` and `disableDeletion: true`. The dashboard is part of the
+experiment; it should not drift in someone's browser and then fail to reproduce.
 
-Para alterá-lo: edite o JSON, `just local-down && just local-up`, e commite.
+To change it: edit the JSON, `just local-down && just local-up`, commit.
 
-## O relatório HTML
+## The HTML report
 
-O dashboard mostra o *agora*. O relatório mostra o que **aconteceu**:
+The dashboard shows *now*. The report shows what **happened**:
 
 ```bash
-just report   # a partir dos logs já em disco
+just report   # from whatever logs are already on disk
 ```
 
-Produz `artifacts/report/report.html`, autocontido: sem CDN, sem script, sem
-fonte externa, gráficos em SVG inline. Precisa ser legível de um laptop com o
-Wi-Fi desligado, meses depois de a conta AWS ter sido destruída.
+It writes `artifacts/report/report.html`, self-contained: no CDN, no script, no
+external font, charts as inline SVG. It has to be readable from a laptop with
+the Wi-Fi off, months after the AWS account was torn down.
 
-Ele traz uma visão geral por perfil, uma tabela com os dois peers lado a lado
-para cada execução, séries temporais, e uma seção de ressalvas sobre como ler os
-números.
+It carries an overview per profile, a table with both peers side by side for
+each run, time series, and a section of caveats about how to read the numbers.

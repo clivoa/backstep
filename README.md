@@ -1,139 +1,166 @@
-# Laboratório de Rollback Netcode — Madrid ⇄ AWS Frankfurt
+# Rollback Netcode Lab: Madrid ⇄ AWS Frankfurt
 
-Um workspace Rust que demonstra rollback netcode em dois níveis:
+A Rust workspace that demonstrates rollback netcode at two levels:
 
-1. **Arena 2D** determinística e totalmente instrumentada — cada byte do estado
-   é auditável, o snapshot tem 204 bytes e o checksum cobre tudo.
-2. **Street Fighter Alpha 3** rodando no core oficial FBNeo via API libretro,
-   usando exatamente o mesmo motor de rollback.
+1. A deterministic, fully instrumented **2D arena**. Every byte of state is
+   auditable, the snapshot is 204 bytes, and the checksum covers all of it.
+2. **The Last Blade 2** running on the official FBNeo core through the libretro
+   API, driven by exactly the same rollback engine.
 
-O jogador local controla P1 por SDL2. Uma EC2 headless em Frankfurt controla P2
-por FSM. Os peers trocam **apenas inputs** por UDP autenticado com HMAC-SHA256,
-enquanto Prometheus, Grafana, JSONL e um relatório HTML registram conectividade,
-previsões, rollbacks e desyncs.
+The local player drives P1 through SDL2. A headless EC2 instance in Frankfurt
+drives P2 through a scripted FSM. The peers exchange only inputs, over UDP
+authenticated with HMAC-SHA256, while Prometheus, Grafana, JSONL logs and an
+HTML report record connectivity, predictions, rollbacks and desyncs.
 
----
+![A rollback session, delay20 profile](docs/media/rollback-delay20.gif)
 
-## Índice da documentação
+*The Last Blade 2 under rollback. The band across the top is the session's own
+telemetry, burned in from its log: 142 rollbacks so far, 18.5% of a frame's work
+being re-simulated, and `ROLLBACK -5` firing on the frame it happened. The game
+underneath does not stutter.*
 
-| Documento | Assunto |
-|---|---|
-| [00 — Glossário](docs/00-glossario.md) | **Comece aqui.** Todo termo técnico explicado do zero |
-| [01 — Teoria](docs/01-teoria.md) | O que é rollback, por que existe, o que ele custa |
-| [02 — Arquitetura](docs/02-arquitetura.md) | Os oito crates e por que a fronteira está onde está |
-| [03 — Protocolo](docs/03-protocolo.md) | Formato de datagrama, autenticação, handshake |
-| [04 — Uso local](docs/04-uso-local.md) | Controles, comandos, sessão local ponta a ponta |
-| [05 — Determinismo](docs/05-determinismo.md) | As regras que impedem desync, e como são verificadas |
-| [06 — AWS](docs/06-aws.md) | A infraestrutura, o modelo de ameaça, a chave de sessão |
-| [07 — Dashboard](docs/07-dashboard.md) | Prometheus, Grafana e o que cada painel significa |
-| [08 — Experimentos](docs/08-experimentos.md) | Os cinco perfis, o método, os resultados |
-| [09 — Jogos reais](docs/09-sfa3.md) | O core FBNeo, o boot determinístico, o commit pinado |
-| [10 — Custos](docs/10-custos.md) | Quanto custa uma sessão, e onde o dinheiro some |
-| [11 — Cleanup](docs/11-cleanup.md) | Como destruir tudo e conferir que sumiu |
-| [12 — Troubleshooting](docs/12-troubleshooting.md) | Sintomas, causas e o que olhar primeiro |
-| [13 — Cobertura](docs/13-cobertura.md) | O que foi validado, o que não foi, e o próximo passo |
-| [14 — Vídeo](docs/14-video.md) | Gravar as sessões e ver o rollback acontecendo |
-| [15 — Elastic](docs/15-elastic.md) | Análise por evento: o que o `summary.csv` não responde |
+## Results
 
----
+Both simulations ran between a desktop in Madrid and an EC2 instance in
+Frankfurt, over the public internet.
 
-## Começo rápido
-
-### Pré-requisitos
-
-| Ferramenta | Para quê | Verificar |
+| | Arena | The Last Blade 2 |
 |---|---|---|
-| Rust ≥ 1.82 | compilar tudo | `cargo --version` |
-| SDL2 ≥ 2.0.20 | cliente gráfico | `pkg-config --modversion sdl2` |
-| Docker | build do FBNeo, Prometheus, Grafana, Elastic | `docker --version` |
-| ffmpeg | gravar vídeo das sessões (opcional) | `ffmpeg -version` |
-| `just` | os comandos abaixo | `just --version` |
-| Terraform ≥ 1.6 | infraestrutura AWS | `terraform version` |
+| Snapshot size | 204 bytes | 415 155 bytes |
+| CPU, 300 s session | ~2 s | ~116 s |
+| Prediction accuracy | 91.7% | 92.9% |
+| Checksums compared | 149 | 300 |
+| Desyncs | 0 | 0 |
+
+449 checksum comparisons agreed across two different CPUs, two operating systems
+and two libcs. That is the evidence behind the determinism rules in
+[05](docs/05-determinism.md), and two processes of one binary on one machine
+could never have produced it.
+
+Full numbers, including all five synthetic network profiles, are in
+[08 — Experiments](docs/08-experiments.md).
+
+## Documentation
+
+| Document | Subject |
+|---|---|
+| [00 — Glossary](docs/00-glossary.md) | Start here. Every technical term from scratch |
+| [01 — Theory](docs/01-theory.md) | What rollback is, why it exists, what it costs |
+| [02 — Architecture](docs/02-architecture.md) | The crates, and why the boundary sits where it does |
+| [03 — Protocol](docs/03-protocol.md) | Datagram format, authentication, handshake |
+| [04 — Running locally](docs/04-running-locally.md) | Controls, commands, a session end to end |
+| [05 — Determinism](docs/05-determinism.md) | The rules that prevent desync, and how they were checked |
+| [06 — AWS](docs/06-aws.md) | The infrastructure, the threat model, the session key |
+| [07 — Dashboard](docs/07-dashboard.md) | Prometheus, Grafana, what each panel means |
+| [08 — Experiments](docs/08-experiments.md) | Five profiles, the method, the results |
+| [09 — The Last Blade 2](docs/09-the-last-blade-2.md) | The FBNeo core, the boot script, the pinned commit |
+| [10 — Costs](docs/10-costs.md) | What a session costs, and where money disappears |
+| [11 — Cleanup](docs/11-cleanup.md) | How to destroy everything and confirm it went |
+| [12 — Troubleshooting](docs/12-troubleshooting.md) | Symptoms, causes, what to look at first |
+| [13 — Coverage](docs/13-coverage.md) | What was validated, what was not |
+| [14 — Video](docs/14-video.md) | Recording sessions, and watching rollback happen |
+| [15 — Elastic](docs/15-elastic.md) | Per-event analysis: what `summary.csv` cannot answer |
+
+## Quick start
+
+### Prerequisites
+
+| Tool | For | Check |
+|---|---|---|
+| Rust ≥ 1.82 | building everything | `cargo --version` |
+| SDL2 ≥ 2.0.20 | the graphical client | `pkg-config --modversion sdl2` |
+| Docker | FBNeo build, Prometheus, Grafana, Elastic | `docker --version` |
+| ffmpeg | recording sessions (optional) | `ffmpeg -version` |
+| `just` | the commands below | `just --version` |
+| Terraform ≥ 1.6 | AWS infrastructure | `terraform version` |
 | AWS CLI | `aws-up`, `collect`, `aws-down` | `aws sts get-caller-identity` |
-| shellcheck | gate de lint dos scripts | `shellcheck --version` |
+| shellcheck | the script lint gate | `shellcheck --version` |
 
-Arquitetura x86_64. O `docker-compose` da observabilidade usa rede de host e
-portanto é **Linux-only** — o motivo está explicado no próprio arquivo.
+x86_64. The observability `docker-compose` uses host networking and is therefore
+Linux-only; the reason is written in the file itself.
 
-### Um teste completo, sem AWS e sem ROM
+### A full test, no AWS and no ROM
 
 ```bash
-just test        # fmt, clippy, testes (debug e release), shellcheck, terraform
-just e2e         # dois processos reais, socket real, os cinco perfis
-just bench       # 180 s por perfil, gera summary.csv e report.html
+just test        # fmt, clippy, tests (debug and release), shellcheck, terraform, docs
+just e2e         # two real processes, a real socket, all five profiles
+just bench       # 180 s per profile, writes summary.csv and report.html
 ```
 
-`just bench` produz:
+`just bench` produces `artifacts/report/summary.csv`, one row per session across
+about 37 columns, and `artifacts/report/report.html`, which is self-contained:
+no CDN, no script, charts as inline SVG.
 
-- `artifacts/report/summary.csv` — uma linha por sessão, ~37 colunas
-- `artifacts/report/report.html` — autocontido: sem CDN, sem script, gráficos
-  em SVG inline
-
-### Observabilidade local
+### Local observability
 
 ```bash
 just local-up
 # Grafana     http://127.0.0.1:3000
 # Prometheus  http://127.0.0.1:9090
-# Exportador  http://127.0.0.1:9898/metrics
+# Exporter    http://127.0.0.1:9898/metrics
 ```
 
-### Sessão contra a AWS
+### A session against AWS
 
 ```bash
 cp terraform/example.tfvars terraform/terraform.tfvars
-$EDITOR terraform/terraform.tfvars     # allowed_cidr = seu IP/32
-curl -s https://checkip.amazonaws.com  # para descobrir o IP
+$EDITOR terraform/terraform.tfvars     # allowed_cidr = your address, as a /32
+curl -s https://checkip.amazonaws.com  # to find it
 
 just aws-up arena
 just play arena
-just collect      # SEMPRE antes do aws-down
+just collect      # ALWAYS before aws-down
 just aws-down
 ```
 
-Para um jogo de arcade é preciso fornecer a própria ROM:
+### The Last Blade 2
+
+You supply the ROM. It needs `neogeo.zip`, the Neo Geo BIOS, in
+`artifacts/system/`: a Neo Geo game is only half the code that runs, and the
+BIOS is hashed into the handshake alongside the ROM.
 
 ```bash
-just build-core                                  # compila o FBNeo em container
-
-# The Last Blade 2 (Neo Geo). Precisa também de neogeo.zip, o BIOS,
-# em artifacts/system/ — é metade do código que roda.
-just check-determinism /caminho/lastbld2.zip     # confira o core antes
-just e2e 90 lastblade2 /caminho/lastbld2.zip
-just aws-up lastblade2 /caminho/lastbld2.zip
-just play lastblade2 /caminho/lastbld2.zip
-
-# Street Fighter Alpha 3 (CPS-2). O set precisa conter sfa3.key.
-just aws-up sfa3 /caminho/sfa3.zip
+just build-core                                  # builds FBNeo in a container
+just check-determinism /path/lastbld2.zip        # check the core before anything
+just e2e 90 lastblade2 /path/lastbld2.zip
+just aws-up lastblade2 /path/lastbld2.zip
+just play lastblade2 /path/lastbld2.zip
 ```
 
-O `just check-determinism` não é opcional por preciosismo: o FBNeo, como vem,
-semeia RNG e relógio emulado a partir do relógio do host, e dois peers que
-iniciam em segundos diferentes divergem antes do primeiro input. O `just
-build-core` corrige isso; ver [05 — Determinismo](docs/05-determinismo.md).
+`just check-determinism` is not fussiness. FBNeo as shipped seeds its RNG and
+its emulated calendar clock from the host clock, so two peers that start in
+different wall-clock seconds diverge before the first input. `just build-core`
+patches that; the measurement and the fix are in
+[05 — Determinism](docs/05-determinism.md).
 
----
+## What this repository does not contain
 
-## O que este repositório **não** contém
+No ROMs and no BIOS. `lastbld2.zip` and `neogeo.zip` are yours, and are never
+committed, redistributed, or included in any artefact here.
 
-- **Nenhuma ROM e nenhum BIOS.** `sfa3.zip`, `lastbld2.zip` e `neogeo.zip` são
-  fornecidos por você e nunca são versionados, redistribuídos nem incluídos em
-  qualquer artefato deste repositório.
-- **Nenhum savestate ou log pessoal.** `artifacts/` está no `.gitignore`.
-- **Nenhuma chave.** A chave de sessão é efêmera, gerada por execução, guardada
-  em SSM SecureString e num arquivo local modo 0600, e nunca entra no estado do
-  Terraform nem em linha de comando.
+No savestates or personal logs. All of `artifacts/` is gitignored.
 
-## Fora do escopo do MVP
+No keys. The session key is ephemeral, generated per run, kept in SSM
+SecureString and in a local file with mode 0600, and never enters Terraform
+state or a command line.
 
-STUN, relay, matchmaking, espectador, reconexão, sincronização de estado,
-Tekken 3, IA por visão, bot por leitura de memória, e múltiplas regiões.
-O Fightcade é referência comparativa, não dependência.
+## Street Fighter Alpha 3
 
-## Sobre o idioma
+The lab specification named SFA3, and the code still carries the boot script and
+the `--sim sfa3` path. It was never run, because the available romset is
+missing `sfa3.key`, the 20-byte CPS-2 decryption key. All eleven SFA3 variants
+in FBNeo require one, so no other revision avoids it.
 
-O código e as APIs estão em inglês; a documentação didática está em português.
-O enunciado do laboratório pede as duas coisas em pontos diferentes ("documentação
-em português cobrindo teoria…" e "documentação didática em inglês"); a escolha
-aqui seguiu o critério de aceitação, que é mais específico. Os comentários dentro
-do código continuam em inglês, junto do que explicam.
+The Last Blade 2 took its place. It exercises the same core, the same libretro
+host, the same `LibretroSimulation` and the same rollback engine, so the thing
+being demonstrated is unchanged. The full diagnosis, down to the FBNeo source
+that makes the key mandatory, is in
+[09 — The Last Blade 2](docs/09-the-last-blade-2.md).
+
+Nothing in the measured results depends on SFA3, and nothing claims it ran.
+
+## Out of scope
+
+STUN, relay, matchmaking, spectating, reconnection, state synchronisation,
+Tekken 3, vision-based AI, memory-reading bots, and multiple regions. Fightcade
+is a reference point, not a dependency.

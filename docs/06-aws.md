@@ -1,53 +1,51 @@
 # 06 — AWS
 
-## O que sobe
+## What gets built
 
-21 recursos, todos em `terraform/`:
+21 resources, all in `terraform/`:
 
 ```
 VPC 10.42.0.0/16
- └─ subnet pública 10.42.1.0/24  ──  Internet Gateway  ──  route table
+ └─ public subnet 10.42.1.0/24  ──  Internet Gateway  ──  route table
      └─ EC2 t3.small, Ubuntu 24.04 x86_64
-         ├─ Elastic IP                    endereço estável entre rebuilds
-         ├─ volume gp3 20 GB criptografado, delete_on_termination
-         ├─ security group                UDP/7000, de um /32, e nada mais
-         ├─ IAM role                       SSM Core + acesso mínimo ao bucket
-         └─ IMDSv2 obrigatório
+         ├─ Elastic IP                 stable address across rebuilds
+         ├─ gp3 20 GB volume           encrypted, delete_on_termination
+         ├─ security group             UDP/7000, from one /32, nothing else
+         ├─ IAM role                   SSM Core + minimal bucket access
+         └─ IMDSv2 required
 
-S3 bucket privado, AES256, lifecycle de 7 dias, force_destroy
-SSM SecureString  /rollback-netcode/session-key
+S3 bucket        private, AES256, 7-day lifecycle, force_destroy
+SSM SecureString /rollback-netcode/session-key
 ```
 
-## Modelo de ameaça
+## Threat model
 
-A superfície de ataque inteira é **uma porta UDP, de um endereço IP**.
+The entire attack surface is **one UDP port, from one IP address**.
 
-### Sem SSH
+### No SSH
 
-Não há par de chaves, não há regra para a porta 22, não há bastion. A
-administração passa por SSM Session Manager, que não precisa de **nenhuma** regra
-de entrada — o agente disca para fora.
+No key pair, no rule for port 22, no bastion. Administration goes through SSM
+Session Manager, which needs **no** inbound rule at all. The agent dials out.
 
 ```bash
 aws ssm start-session --region eu-central-1 --target i-0abc123...
 ```
 
-Um laboratório que abre a 22 "só para debugar" é um laboratório com um buraco
-permanente.
+A lab that opens 22 "just for debugging" is a lab with a permanent hole in it.
 
-### Sem dashboard exposto
+### No exposed dashboard
 
-O exportador Prometheus escuta em `127.0.0.1:9898`. Não há porta de métricas
-aberta em nenhuma interface pública, em nenhuma das pontas. Os números do peer
-remoto chegam pelo **próprio link da sessão**, como `TelemetrySummary`, e são
-re-exportados localmente com `peer="remote"`.
+The Prometheus exporter listens on `127.0.0.1:9898`. There is no metrics port
+open on any public interface, at either end. The remote peer's numbers arrive
+over **the session's own link**, as `TelemetrySummary`, and are re-exported
+locally with `peer="remote"`.
 
-É por isso que o `docker-compose` da observabilidade usa rede de host: um
-contêiner na bridge padrão simplesmente não alcança um listener de loopback do
-host, e a alternativa seria abrir o exportador em `0.0.0.0` — trocando a única
-propriedade de segurança real do laboratório por uma conveniência de contêiner.
+That is also why the observability `docker-compose` uses host networking: a
+container on the default bridge simply cannot reach a loopback listener on the
+host, and the alternative would be binding the exporter to `0.0.0.0`, trading
+the lab's one real security property for a container convenience.
 
-### `allowed_cidr` recusa `0.0.0.0/0`
+### `allowed_cidr` refuses `0.0.0.0/0`
 
 ```hcl
 validation {
@@ -56,58 +54,58 @@ validation {
 }
 ```
 
-Não é sugestão. O Terraform falha.
+Not a suggestion. Terraform fails.
 
-Descubra seu endereço com `curl -s https://checkip.amazonaws.com` e use `/32`.
+Find your address with `curl -s https://checkip.amazonaws.com` and use a `/32`.
 
-### IMDSv2 obrigatório
+### IMDSv2 required
 
-`http_tokens = "required"`, `http_put_response_hop_limit = 1`. A exigência do
-token é o que impede uma leitura de deputado confuso das credenciais da instância
-através de uma requisição que a aplicação foi enganada a fazer.
+`http_tokens = "required"`, `http_put_response_hop_limit = 1`. Requiring the
+token is what stops a confused-deputy read of the instance credentials through a
+request the application was tricked into making.
 
-### IAM mínimo
+### Minimal IAM
 
-A role tem `AmazonSSMManagedInstanceCore` e mais três permissões, cada uma
-restrita ao recurso exato: listar **este** bucket, ler/escrever/apagar objetos
-**deste** bucket, e ler **este** parâmetro.
+The role carries `AmazonSSMManagedInstanceCore` and three more permissions, each
+scoped to the exact resource: list **this** bucket, read/write/delete objects in
+**this** bucket, read **this** parameter.
 
-### O systemd endurecido
+### A hardened systemd unit
 
-O serviço do peer roda com `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`
-e `ProtectHome`, com escrita liberada apenas em `/opt/rollback/artifacts` e
-`/opt/rollback/secrets`.
+The peer service runs with `NoNewPrivileges`, `PrivateTmp`,
+`ProtectSystem=strict` and `ProtectHome`, with write access only to
+`/opt/rollback/artifacts` and `/opt/rollback/secrets`.
 
-## A chave de sessão
+## The session key
 
-Este é o ponto onde a maioria dos laboratórios vaza um segredo, então vale
-detalhar o fluxo:
+This is where most labs leak a secret, so the flow is worth spelling out:
 
-1. `just aws-up` gera 32 bytes de `/dev/urandom` **na sua máquina**.
-2. Escreve em SSM como `SecureString` via `aws ssm put-parameter`.
-3. Escreve numa cópia local `artifacts/session.key`, modo 0600.
-4. A instância lê de SSM no `ExecStartPre` do serviço e grava em
-   `/opt/rollback/secrets/session.key`, modo 0600, dono root.
-5. O `run-peer.sh` exporta dali para o ambiente do processo.
+1. `just aws-up` generates 32 bytes from `/dev/urandom` **on your machine**.
+2. Writes it to SSM as a `SecureString` via `aws ssm put-parameter`.
+3. Writes a local copy to `artifacts/session.key`, mode 0600.
+4. The instance reads it from SSM in the service's `ExecStartPre` and writes
+   `/opt/rollback/secrets/session.key`, mode 0600, owned by root.
+5. `run-peer.sh` exports it from there into the process environment.
 
-O que **não** acontece:
+What does **not** happen:
 
-- A chave nunca entra no estado do Terraform. O recurso `aws_ssm_parameter` é
-  criado com um placeholder e tem `lifecycle { ignore_changes = [value] }`. Usar
-  `random_password` colocaria o valor em claro no `.tfstate`.
-- A chave nunca vira argumento de linha de comando. Argumentos são visíveis no
-  `ps` para qualquer usuário da máquina. Ela vem de `ROLLBACK_SESSION_KEY` ou de
+- The key never enters Terraform state. The `aws_ssm_parameter` resource is
+  created with a placeholder and carries
+  `lifecycle { ignore_changes = [value] }`. Using `random_password` would put
+  the value in cleartext in `.tfstate`.
+- The key never becomes a command-line argument. Arguments are visible in `ps`
+  to every user on the box. It arrives through `ROLLBACK_SESSION_KEY` or
   `ROLLBACK_SESSION_KEY_FILE`.
-- A chave nunca vai para `Environment=` de uma unit systemd, porque isso é
-  legível por qualquer um via `systemctl show`.
+- The key never goes into a systemd `Environment=`, because that is readable by
+  anyone through `systemctl show`.
 
-E `just aws-down` apaga a cópia local: uma chave em disco sem sessão por trás é
-só passivo.
+And `just aws-down` deletes the local copy: a key on disk with no session behind
+it is pure liability.
 
-## Desligamento automático
+## Automatic shutdown
 
-Duas camadas, porque instância esquecida é o modo de falha mais caro deste
-laboratório:
+Two layers, because a forgotten instance is this lab's most expensive failure
+mode:
 
 ```hcl
 instance_initiated_shutdown_behavior = "terminate"
@@ -117,82 +115,92 @@ instance_initiated_shutdown_behavior = "terminate"
 shutdown -h "+$((AUTO_SHUTDOWN_HOURS * 60))"
 ```
 
-O user-data arma um `shutdown` para 4 horas depois do boot. Como o comportamento
-de shutdown é *terminate* e não *stop*, o prazo é real — não é uma forma de
-acumular instâncias paradas com volumes cobrando.
+User-data arms a `shutdown` for four hours after boot. Because the shutdown
+behaviour is *terminate* rather than *stop*, the deadline is real. This is not a
+way to accumulate stopped instances with volumes still billing.
 
-Ajustável via `auto_shutdown_hours` (1 a 12; acima disso o Terraform recusa).
+Adjustable through `auto_shutdown_hours` (1 to 12; Terraform refuses more).
 
-## Instalação e execução remota
+## Installing and running remotely
 
-O user-data **não compila nada**. Uma t3.small compilando FBNeo levaria mais
-tempo que a sessão inteira. Ele instala o mínimo, cria a estrutura em
-`/opt/rollback`, arma o timer de sync de logs e para.
+User-data **compiles nothing**. A t3.small building FBNeo would take longer than
+the whole session. It installs the minimum, creates the tree under
+`/opt/rollback`, arms the log-sync timer, and stops.
 
-`just aws-up` então:
+`just aws-up` then:
 
-1. compila `rollback-bot` localmente (release);
-2. sobe o binário — e, para SFA3, o core e a ROM — para o S3;
-3. manda um comando via SSM que baixa tudo, escreve o `run-peer.sh` com os
-   argumentos da sessão e dá `systemctl restart rollback-bot`.
+1. builds `rollback-bot` locally, in release;
+2. uploads the binary to S3, plus the core, the ROM and `neogeo.zip` for an
+   emulated game;
+3. sends an SSM command that pulls it all down, fetches the launcher, and runs
+   `systemctl restart rollback-bot`.
 
-## Sincronia de logs
+The launcher script is **generated locally and shipped as a file**, not written
+by a `printf` inside the SSM command. The reason is below.
 
-Um timer do systemd roda `rollback-sync-logs` a cada minuto, e a unit também o
-executa em `ExecStop` — ou seja, no caminho de desligamento, que é quando mais
-importa. Assim `just collect` encontra um conjunto completo mesmo se a sessão
-terminou mal.
+## Log sync
 
-## Por que Frankfurt
+A systemd timer runs `rollback-sync-logs` every minute, and the unit also runs
+it on `ExecStop`, the shutdown path, which is when it matters most. So
+`just collect` finds a complete set even if the session ended badly.
 
-`eu-central-1` é a região do experimento, não um detalhe. Madrid–Frankfurt é
-longe o suficiente para o rollback ser visível (RTT real de 30–45 ms, 2 a 3
-frames) e perto o suficiente para o jogo continuar jogável. Mudar a região muda
-o resultado.
+It syncs `artifacts/logs` and `artifacts/video`, and deliberately not
+`artifacts/system`: that holds the BIOS and FBNeo's NVRAM, and re-uploading
+someone's BIOS every minute is pointless traffic.
 
-## Por que t3.small, e quando trocar
+## Why Frankfurt
 
-t3.small (2 vCPU burstable, 2 GiB) sustenta a arena com folga enorme. Para SFA3 o
-gargalo é o `retro_serialize` a cada frame, mais até 8 re-simulações num rollback
-profundo.
+`eu-central-1` is the experiment, not a detail. Madrid to Frankfurt is far
+enough that rollback is visible, 50 ms measured and three frames of it, and
+close enough that the game stays playable. Changing the region changes the
+result.
 
-Se o benchmark de fumaça não sustentar 60 Hz — olhe `effective_fps` no
-`summary.csv`, ou `rollback_advance_seconds_total` no dashboard — troque para
-`t3.medium`:
+## Why t3.small, and when to change it
+
+t3.small (2 burstable vCPU, 2 GiB) carries the arena with enormous headroom: two
+seconds of CPU for a 240-second session.
+
+The Last Blade 2 is a different matter. Measured on the real session, the remote
+peer used 46 seconds of CPU over 300. Comfortable, but that was the peer doing
+almost no rollback work. The local peer, doing 544 of them, used 116 seconds.
+The bottleneck is `retro_serialize` every frame, plus up to eight re-simulations
+in a deep rollback.
+
+Signs it is time to move to `t3.medium`: `effective_fps` well below 60 on the
+remote peer, or `advance + save_state` exceeding about 8 ms per frame, half the
+budget, leaving room for the worst-case rollback.
 
 ```hcl
 instance_type = "t3.medium"
 ```
 
-Sinais de que é hora: `effective_fps` bem abaixo de 60 no peer remoto, ou o tempo
-somado de `advance + save_state` passando de ~8 ms por frame (metade do orçamento,
-para deixar espaço para o pior caso de rollback).
-
-## Fluxo completo
+## The full flow
 
 ```bash
 cp terraform/example.tfvars terraform/terraform.tfvars
-$EDITOR terraform/terraform.tfvars    # allowed_cidr = $(curl -s https://checkip.amazonaws.com)/32
+$EDITOR terraform/terraform.tfvars   # allowed_cidr = $(curl -s https://checkip.amazonaws.com)/32
 
-just aws-up arena                 # ~3 min: apply, chave, upload, start
-just play arena                 # joga
-just collect                          # SEMPRE antes de aws-down
-just aws-down                         # destrói tudo
+just aws-up arena          # ~3 min: apply, key, upload, start
+just play arena            # play
+just collect               # ALWAYS before aws-down
+just aws-down              # destroy everything
 ```
 
-Para revisar uma mudança de infra sem aplicar:
+For the emulated game, with recording on both ends:
 
 ```bash
-just aws-plan
+RECORD=1 SIM=lastblade2 ROM=/path/lastbld2.zip DURATION=150 ./ops/scripts/aws-up.sh
 ```
 
-## Cinco coisas que só o primeiro `apply` de verdade encontrou
+To review an infrastructure change without applying it: `just aws-plan`.
 
-O Terraform passava em `fmt` e `validate`, os scripts passavam em `shellcheck`, e
-mesmo assim a primeira sessão real levou cinco tentativas. Vale registrar cada
-uma, porque todas são de uma classe que nenhum gate local pega.
+## Five things only a real `apply` found
 
-### 1. Um apóstrofo derrubou o `apply`
+Terraform passed `fmt` and `validate`, the scripts passed `shellcheck`, and the
+first real session still took five attempts. Each one is worth recording,
+because they are all of a class no local gate catches.
+
+### 1. An apostrophe took down the apply
 
 ```
 Error: creating VPC Security Group Rule
@@ -200,79 +208,79 @@ InvalidParameterValue: Invalid rule description. Valid descriptions are strings
 less than 256 characters from the following set:  a-zA-Z0-9. _-:/()#,@[]+=&;{}!$*
 ```
 
-A descrição era `"Rollback session traffic from the operator's address"`. O
-apóstrofo não está no conjunto permitido. `terraform validate` acha isso ótimo —
-só a API da AWS recusa.
+The description read `"Rollback session traffic from the operator's address"`.
+The apostrophe is not in the permitted set. `terraform validate` is perfectly
+happy with it; only the AWS API refuses.
 
-### 2. O SSM roda `/bin/sh`, não bash
+### 2. SSM runs `/bin/sh`, not bash
 
-`AWS-RunShellScript` junta os comandos num script executado pelo shell padrão,
-que no Ubuntu é **dash**. Dois bashisms morreram ali:
+`AWS-RunShellScript` joins the commands into a script run by the default shell,
+which on Ubuntu is **dash**. Two bashisms died there:
 
 - `set -euo pipefail` → `set: Illegal option -o pipefail`
 - `source /opt/rollback/env` → `source: not found`
 
-Correção: `set -eux` e `.` no lugar de `source`.
+Fixed with `set -eux` and `.` instead of `source`.
 
-### 3. O Ubuntu 24.04 não tem mais o pacote `awscli`
+### 3. Ubuntu 24.04 no longer ships `awscli`
 
 ```
 E: Package 'awscli' has no installation candidate
 ```
 
-O `noble` removeu o pacote. Sob `set -e`, isso mata o `user_data` na primeira
-linha e deixa uma instância que **liga, responde ao SSM, e não tem nada
-instalado** — uma falha invisível de fora. O bootstrap agora instala o bundle v2
-oficial da AWS.
+Noble dropped the package. Under `set -e` that kills `user_data` on its first
+command and leaves an instance that **boots, answers SSM, and has nothing
+installed**, a failure that is invisible from outside. The bootstrap now
+installs AWS's official v2 bundle.
 
-### 4. SSM Online não significa bootstrap pronto
+### 4. SSM Online does not mean bootstrap finished
 
-O agente SSM vem embutido na AMI e responde durante o boot, muito antes de o
-`cloud-init` terminar. Esperar pelo ping e mandar o comando em seguida disputa
-com o bootstrap e falha com `cannot open /opt/rollback/env` — que parece script
-quebrado, não "você chegou cedo".
+The SSM agent is baked into the AMI and answers during boot, long before
+`cloud-init` is done. Waiting for the ping and then sending the command races
+the bootstrap and fails with `cannot open /opt/rollback/env`, which reads like a
+broken script rather than "you were early".
 
-O `aws-up` agora espera pelo marcador `/opt/rollback/BOOTSTRAP_COMPLETE`, que o
-bootstrap escreve quando de fato acabou.
+`aws-up` now waits for the `/opt/rollback/BOOTSTRAP_COMPLETE` marker the
+bootstrap writes when it genuinely finishes.
 
-### 5. `printf %s` não interpreta `\n`
+### 5. `printf %s` does not interpret `\n`
 
-O lançador remoto era escrito por um `printf` dentro de um comando SSM — três
-camadas de aspas (string bash → string JSON → sh remoto). E `printf %s` não
-interpreta escapes, então o script inteiro caiu numa linha só:
+The remote launcher was written by a `printf` inside an SSM command, three
+layers of quoting deep: bash string to JSON string to remote sh. And `printf %s`
+does not interpret escapes, so the whole script landed on a single line:
 
 ```
 /usr/bin/env bash\nset -euo pipefail\nexport ROLLBACK_SESSION_KEY=...
 ```
 
-O `env` passou minutos tentando executar um programa chamado
-`bash\nset -euo pipefail\n…`, e o `systemctl is-active` respondia **active** o
-tempo todo.
+`env` spent minutes trying to execute a program named
+`bash\nset -euo pipefail\n…`, and `systemctl is-active` reported **active** the
+entire time.
 
-Correção estrutural, não cosmética: o lançador é **gerado localmente e enviado
-como arquivo**. Um arquivo no S3 não tem camada de escape nenhuma.
+The fix is structural rather than cosmetic: the launcher is generated locally
+and uploaded as a file. A file in S3 has no escaping layer at all.
 
-### A lição comum
+### The common thread
 
-Quatro das cinco falharam **em silêncio ou com sucesso aparente**. O `aws-up`
-chegava ao fim imprimindo "the remote peer is up" com o peer morto, e só se
-descobria pelo handshake estourando 120 s depois, sem explicação.
+Four of the five failed **silently, or with apparent success**. `aws-up` would
+reach the end printing "the remote peer is up" with the peer dead, and you found
+out from the handshake timing out 120 seconds later with no explanation.
 
-Por isso o script agora:
+So the script now:
 
-- espera o comando SSM chegar a um estado terminal em vez de dormir 8 s;
-- **falha ruidosamente** se o status não for `Success`, dizendo que a infra está
-  de pé e custando dinheiro;
-- confirma com `ss -lun | grep -q :7000` que o peer está **realmente escutando**,
-  e despeja o journal se não estiver.
+- waits for the SSM command to reach a terminal status instead of sleeping 8 s;
+- **fails loudly** when the status is not `Success`, and says that the
+  infrastructure is up and costing money;
+- confirms with `ss -lun | grep -q :7000` that the peer is **actually
+  listening**, and dumps the journal when it is not.
 
-Verificar é barato. Descobrir pelo handshake é caro.
+Verifying is cheap. Finding out from the handshake is not.
 
-## Estado do Terraform
+## Terraform state
 
-O backend é local (`terraform/terraform.tfstate`), e está no `.gitignore`.
+The backend is local (`terraform/terraform.tfstate`) and gitignored.
 
-Para um laboratório de uma pessoa isso é adequado. Se mais de uma pessoa for
-operar a mesma conta, mova para um backend S3 com bloqueio em DynamoDB antes de
-qualquer outra coisa — dois `apply` concorrentes sobre estado local produzem
-recursos órfãos que só aparecem na fatura.
+For a one-person lab that is fine. If more than one person will operate the same
+account, move to an S3 backend with DynamoDB locking before anything else. Two
+concurrent applies over local state produce orphaned resources that only show up
+on the bill.

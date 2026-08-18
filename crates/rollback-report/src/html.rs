@@ -15,9 +15,9 @@ const PAD: f64 = 28.0;
 
 pub fn render(sessions: &[Session], generated_at: &str) -> String {
     let mut out = String::with_capacity(64 * 1024);
-    out.push_str("<h1>Rollback Netcode &mdash; relatório de sessões</h1>\n");
+    out.push_str("<h1>Rollback Netcode &mdash; session report</h1>\n");
     out.push_str(&format!(
-        "<p class=\"meta\">Gerado em {}. {} sessão(ões).</p>\n",
+        "<p class=\"meta\">Generated {}. {} session(s).</p>\n",
         escape(generated_at),
         sessions.len()
     ));
@@ -52,7 +52,7 @@ pub fn render(sessions: &[Session], generated_at: &str) -> String {
         for session in group {
             if session.series.len() >= 2 {
                 out.push_str(&format!(
-                    "<h3>{} &mdash; séries temporais</h3>\n",
+                    "<h3>{} &mdash; time series</h3>\n",
                     escape(&session.summary.player)
                 ));
                 out.push_str("<div class=\"charts\">");
@@ -77,7 +77,7 @@ pub fn render(sessions: &[Session], generated_at: &str) -> String {
                     " ms",
                 ));
                 out.push_str(&chart(
-                    "Profundidade de previsão",
+                    "Prediction depth",
                     &session
                         .series
                         .iter()
@@ -105,16 +105,16 @@ fn overview(sessions: &[Session]) -> String {
             .push(&s.summary);
     }
 
-    let mut out = String::from("<h2>Visão geral por perfil</h2>\n<table>\n<tr>");
+    let mut out = String::from("<h2>Overview by profile</h2>\n<table>\n<tr>");
     for h in [
         "Perfil",
-        "Sessões",
-        "RTT médio",
+        "Sessions",
+        "Mean RTT",
         "Perda",
         "Rollbacks/min",
-        "Prof. média",
-        "Prof. máx",
-        "Acurácia",
+        "Mean depth",
+        "Max depth",
+        "Accuracy",
         "Stalls",
         "Desync",
     ] {
@@ -148,7 +148,7 @@ fn overview(sessions: &[Session]) -> String {
             mean(&|s| s.prediction_accuracy() * 100.0),
             mean(&|s| s.stalls as f64),
             if desync { "bad" } else { "good" },
-            if desync { "SIM" } else { "não" },
+            if desync { "YES" } else { "no" },
         ));
     }
     out.push_str("</table>\n");
@@ -161,13 +161,13 @@ type PeerRow = (&'static str, Box<dyn Fn(&SessionSummary) -> String>);
 /// The two peers of one run, side by side.
 fn peer_table(group: &[&Session]) -> String {
     let rows: Vec<PeerRow> = vec![
-        ("Sessão", Box::new(|s: &SessionSummary| escape(&s.name))),
+        ("Session", Box::new(|s: &SessionSummary| escape(&s.name))),
         (
             "Commit",
             Box::new(|s: &SessionSummary| escape(&s.commit[..s.commit.len().min(12)])),
         ),
         (
-            "Duração",
+            "Duration",
             Box::new(|s: &SessionSummary| format!("{:.1} s", s.duration_s)),
         ),
         (
@@ -191,11 +191,11 @@ fn peer_table(group: &[&Session]) -> String {
             Box::new(|s: &SessionSummary| s.rollbacks.to_string()),
         ),
         (
-            "Profundidade média",
+            "Mean rollback depth",
             Box::new(|s: &SessionSummary| format!("{:.2}", s.mean_rollback_depth())),
         ),
         (
-            "Profundidade máxima",
+            "Max rollback depth",
             Box::new(|s: &SessionSummary| s.max_rollback_depth.to_string()),
         ),
         (
@@ -203,11 +203,11 @@ fn peer_table(group: &[&Session]) -> String {
             Box::new(|s: &SessionSummary| s.predicted_frames.to_string()),
         ),
         (
-            "Previsões erradas",
+            "Mispredictions",
             Box::new(|s: &SessionSummary| s.mispredicted_frames.to_string()),
         ),
         (
-            "Acurácia da previsão",
+            "Prediction accuracy",
             Box::new(|s: &SessionSummary| format!("{:.2}%", s.prediction_accuracy() * 100.0)),
         ),
         (
@@ -227,7 +227,7 @@ fn peer_table(group: &[&Session]) -> String {
             Box::new(|s: &SessionSummary| format!("{:.1} ms", s.srtt_ms)),
         ),
         (
-            "Variação do RTT",
+            "RTT variation",
             Box::new(|s: &SessionSummary| format!("{:.1} ms", s.rttvar_ms)),
         ),
         (
@@ -251,7 +251,7 @@ fn peer_table(group: &[&Session]) -> String {
             Box::new(|s: &SessionSummary| format!("{:.1} s", s.cpu_seconds)),
         ),
         (
-            "Memória residente",
+            "Resident memory",
             Box::new(|s: &SessionSummary| format!("{:.0} MB", s.resident_bytes as f64 / 1048576.0)),
         ),
         (
@@ -266,17 +266,19 @@ fn peer_table(group: &[&Session]) -> String {
         ),
         (
             "Desync",
-            Box::new(|s: &SessionSummary| {
-                if s.desync {
-                    "SIM".into()
-                } else {
-                    "não".into()
-                }
-            }),
+            Box::new(
+                |s: &SessionSummary| {
+                    if s.desync {
+                        "SIM".into()
+                    } else {
+                        "no".into()
+                    }
+                },
+            ),
         ),
     ];
 
-    let mut out = String::from("<table class=\"peers\">\n<tr><th>Métrica</th>");
+    let mut out = String::from("<table class=\"peers\">\n<tr><th>Metric</th>");
     for session in group {
         out.push_str(&format!("<th>{}</th>", escape(&session.summary.player)));
     }
@@ -366,25 +368,25 @@ fn extent(values: impl Iterator<Item = f64>) -> (f64, f64) {
 
 fn caveats() -> String {
     String::from(
-        "<h2>Como ler estes números</h2>\n<ul class=\"caveats\">\
-<li><b>Não há latência unidirecional.</b> Os dois peers não compartilham relógio; \
-o RTT precisa de um relógio só e é o que está reportado.</li>\
-<li><b>A perda é inferida</b> a partir das lacunas na sequência do peer. Um datagrama \
-atrasado aparece como perda até chegar, e então a estimativa se corrige sozinha.</li>\
-<li><b>Frames apresentados diferem entre os peers</b> por design: cada lado desenha o \
-próprio presente. O que precisa bater são os checksums dos frames confirmados.</li>\
-<li><b>O perfil de rede é aplicado na saída</b> de cada peer. Um experimento simétrico \
-tem o mesmo perfil dos dois lados, e o RTT vê aproximadamente o dobro do atraso configurado.</li>\
-<li><b>Desync = sessão inválida.</b> Qualquer linha marcada com desync deve ser \
-investigada, não interpretada.</li></ul>\n",
+        "<h2>How to read these numbers</h2>\n<ul class=\"caveats\">\
+<li><b>There is no one-way latency here.</b> The two peers do not share a clock. RTT \
+needs only one, and RTT is what is reported.</li>\
+<li><b>Loss is inferred</b> from gaps in the peer's sequence. A delayed datagram counts \
+as lost until it arrives, at which point the estimate corrects itself.</li>\
+<li><b>Presented frames differ between peers</b> by design: each side draws its own \
+present. What has to match are the checksums of confirmed frames.</li>\
+<li><b>The network profile is applied on egress</b> at each peer. A symmetric experiment \
+runs the same profile on both sides, so RTT sees roughly twice the configured delay.</li>\
+<li><b>Desync means the session is void.</b> Any row marked desync should be \
+investigated, not interpreted.</li></ul>\n",
     )
 }
 
 fn wrap(body: &str) -> String {
     format!(
-        "<!doctype html>\n<html lang=\"pt-BR\"><head><meta charset=\"utf-8\">\
+        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
-<title>Rollback Netcode — relatório</title><style>{}</style></head><body>{body}</body></html>\n",
+<title>Rollback Netcode report</title><style>{}</style></head><body>{body}</body></html>\n",
         CSS
     )
 }
@@ -518,7 +520,7 @@ mod tests {
     #[test]
     fn a_desync_is_called_out_loudly() {
         let html = render(&[session("p1", "combined", true)], "now");
-        assert!(html.contains("class=\"bad\">SIM"));
+        assert!(html.contains("class=\"bad\">YES"));
     }
 
     #[test]
@@ -576,7 +578,7 @@ mod tests {
     #[test]
     fn the_caveats_explain_why_there_is_no_one_way_latency() {
         let html = render(&[session("p1", "natural", false)], "now");
-        assert!(html.contains("latência unidirecional"));
-        assert!(html.contains("perda é inferida"));
+        assert!(html.contains("one-way latency"));
+        assert!(html.contains("Loss is inferred"));
     }
 }

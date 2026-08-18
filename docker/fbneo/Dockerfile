@@ -3,7 +3,7 @@
 # The core is pinned to a single upstream commit so that both peers can verify
 # they are running byte-identical emulation code before a session starts.
 #
-# NOTE ON THE PIN (see docs/09-sfa3.md, "Sobre o commit pinado"):
+# NOTE ON THE PIN (see docs/09-the-last-blade-2.md, "About the pinned commit"):
 # The lab spec pins finalburnneo/FBNeo@f1c3545fcdfca4dd5fcf9c1baaac6bba143785f8.
 # That tree contains no `src/burner/libretro` directory -- upstream FBNeo does
 # not host the libretro port. The libretro core is maintained in the
