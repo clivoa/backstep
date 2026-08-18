@@ -76,7 +76,10 @@ cat >/usr/local/bin/rollback-sync-logs <<'SCRIPT'
 set -euo pipefail
 # shellcheck disable=SC1091
 source /opt/rollback/env
-aws s3 sync /opt/rollback/artifacts "s3://$ROLLBACK_BUCKET/remote/artifacts" \
+# Logs only. artifacts/system holds the BIOS and FBNeo's NVRAM: re-uploading
+# someone's BIOS on every sync is pointless traffic, and `collect` does not want
+# it back anyway.
+aws s3 sync /opt/rollback/artifacts/logs "s3://$ROLLBACK_BUCKET/remote/artifacts/logs" \
     --region "$AWS_DEFAULT_REGION" --only-show-errors
 aws s3 cp /var/log/rollback-bootstrap.log \
     "s3://$ROLLBACK_BUCKET/remote/bootstrap.log" \

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Bring the remote peer up: apply the Terraform, generate a session key, upload
-# the binaries (and the ROM, for SFA3) and start the bot.
+# the binaries (and the ROM, and the BIOS if the game needs one) and start the
+# bot.
 #
 # The session key is generated here and pushed straight into SSM as a
 # SecureString. It never touches Terraform state, never appears on a command
@@ -12,19 +13,37 @@ cd "${ROOT}"
 
 SIM="${SIM:-arena}"
 ROM="${ROM:-}"
+# Neo Geo games are only half the code that runs; neogeo.zip is the other half,
+# and it is hashed into the handshake. Both peers must have the same file.
+BIOS="${BIOS:-${ROOT}/artifacts/system/neogeo.zip}"
 PROFILE="${PROFILE:-natural}"
 SEED="${SEED:-4242}"
 DURATION="${DURATION:-180}"
 TF_DIR="${ROOT}/terraform"
 
-if [[ "${SIM}" != "arena" && "${SIM}" != "sfa3" ]]; then
-    echo "SIM must be arena or sfa3, got '${SIM}'" >&2
+case "${SIM}" in
+    arena) NEEDS_ROM=0; NEEDS_BIOS=0 ;;
+    sfa3) NEEDS_ROM=1; NEEDS_BIOS=0 ;;
+    lastblade2) NEEDS_ROM=1; NEEDS_BIOS=1 ;;
+    *) echo "SIM must be arena, sfa3 or lastblade2, got '${SIM}'" >&2; exit 2 ;;
+esac
+
+if [[ ${NEEDS_ROM} -eq 1 && -z "${ROM}" ]]; then
+    echo "SIM=${SIM} needs ROM=/path/to/game.zip" >&2
     exit 2
 fi
-if [[ "${SIM}" == "sfa3" && -z "${ROM}" ]]; then
-    echo "SIM=sfa3 needs ROM=/path/to/sfa3.zip" >&2
+if [[ ${NEEDS_ROM} -eq 1 && ! -f "${ROM}" ]]; then
+    echo "no ROM at '${ROM}'" >&2
     exit 2
 fi
+if [[ ${NEEDS_BIOS} -eq 1 && ! -f "${BIOS}" ]]; then
+    echo "SIM=${SIM} needs the Neo Geo BIOS at '${BIOS}'." >&2
+    echo "Both peers must use the same file: it is hashed into the handshake." >&2
+    exit 2
+fi
+# The remote peer must be handed the ROM under the name FBNeo expects, because
+# the romset name is the zip's basename.
+ROM_NAME="$(basename "${ROM:-none}")"
 if [[ ! -f "${TF_DIR}/terraform.tfvars" ]]; then
     echo "terraform/terraform.tfvars is missing." >&2
     echo "Copy terraform/example.tfvars and set allowed_cidr to your own /32:" >&2
@@ -77,12 +96,16 @@ done
 echo "==> uploading artefacts to s3://${BUCKET}"
 aws s3 cp "${ROOT}/target/release/rollback-bot" "s3://${BUCKET}/bin/rollback-bot" \
     --region "${REGION}" --only-show-errors
-if [[ "${SIM}" == "sfa3" ]]; then
+if [[ ${NEEDS_ROM} -eq 1 ]]; then
     aws s3 cp "${ROOT}/cores/fbneo_libretro.so" "s3://${BUCKET}/bin/fbneo_libretro.so" \
         --region "${REGION}" --only-show-errors
     # The ROM is the user's own file. It goes to an encrypted, private bucket
     # with a seven-day lifecycle, and `just aws-down` deletes it explicitly.
-    aws s3 cp "${ROM}" "s3://${BUCKET}/rom/sfa3.zip" \
+    aws s3 cp "${ROM}" "s3://${BUCKET}/rom/${ROM_NAME}" \
+        --region "${REGION}" --only-show-errors
+fi
+if [[ ${NEEDS_BIOS} -eq 1 ]]; then
+    aws s3 cp "${BIOS}" "s3://${BUCKET}/rom/neogeo.zip" \
         --region "${REGION}" --only-show-errors
 fi
 
@@ -91,9 +114,9 @@ REMOTE_ARGS="--sim ${SIM} --player p2 --bind 0.0.0.0:${PORT} --profile ${PROFILE
 REMOTE_ARGS="${REMOTE_ARGS} --seed ${SEED} --duration ${DURATION} --mode play"
 REMOTE_ARGS="${REMOTE_ARGS} --log-dir /opt/rollback/artifacts/logs"
 REMOTE_ARGS="${REMOTE_ARGS} --system-dir /opt/rollback/artifacts/system"
-if [[ "${SIM}" == "sfa3" ]]; then
+if [[ ${NEEDS_ROM} -eq 1 ]]; then
     REMOTE_ARGS="${REMOTE_ARGS} --core /opt/rollback/bin/fbneo_libretro.so"
-    REMOTE_ARGS="${REMOTE_ARGS} --rom /opt/rollback/rom/sfa3.zip"
+    REMOTE_ARGS="${REMOTE_ARGS} --rom /opt/rollback/rom/${ROM_NAME}"
 fi
 
 COMMAND_ID="$(aws ssm send-command \
@@ -106,7 +129,8 @@ COMMAND_ID="$(aws ssm send-command \
         'source /opt/rollback/env',
         'aws s3 cp s3://${BUCKET}/bin/rollback-bot /opt/rollback/bin/rollback-bot',
         'chmod 0755 /opt/rollback/bin/rollback-bot',
-        'if [ \"${SIM}\" = sfa3 ]; then mkdir -p /opt/rollback/rom; aws s3 cp s3://${BUCKET}/bin/fbneo_libretro.so /opt/rollback/bin/fbneo_libretro.so; aws s3 cp s3://${BUCKET}/rom/sfa3.zip /opt/rollback/rom/sfa3.zip; fi',
+        'if [ ${NEEDS_ROM} -eq 1 ]; then mkdir -p /opt/rollback/rom; aws s3 cp s3://${BUCKET}/bin/fbneo_libretro.so /opt/rollback/bin/fbneo_libretro.so; aws s3 cp s3://${BUCKET}/rom/${ROM_NAME} /opt/rollback/rom/${ROM_NAME}; fi',
+        'if [ ${NEEDS_BIOS} -eq 1 ]; then mkdir -p /opt/rollback/artifacts/system; aws s3 cp s3://${BUCKET}/rom/neogeo.zip /opt/rollback/artifacts/system/neogeo.zip; fi',
         'printf %s \"#!/usr/bin/env bash\\nset -euo pipefail\\nexport ROLLBACK_SESSION_KEY=\\\$(cat /opt/rollback/secrets/session.key)\\nexec /opt/rollback/bin/rollback-bot ${REMOTE_ARGS}\\n\" > /opt/rollback/bin/run-peer.sh',
         'chmod 0755 /opt/rollback/bin/run-peer.sh',
         'systemctl restart rollback-bot.service',
