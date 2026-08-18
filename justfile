@@ -33,7 +33,7 @@ default:
 # --- gates -----------------------------------------------------------------
 
 # Everything CI checks, in the order that fails fastest.
-test: fmt-check lint unit shell-lint tf-check
+test: fmt-check lint unit shell-lint tf-check docs-check
     @echo "==> all gates passed"
 
 fmt:
@@ -65,6 +65,12 @@ shell-lint:
     else \
         echo "    shellcheck not installed; skipping"; \
     fi
+
+# The docs are a deliverable, so they get a gate too: links resolve, anchors
+# resolve, and nothing is orphaned from the index.
+docs-check:
+    @echo "==> docs"
+    @python3 ops/scripts/check-docs.py
 
 tf-check:
     @echo "==> terraform fmt + validate"

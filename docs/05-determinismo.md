@@ -1,5 +1,8 @@
 # 05 — Determinismo
 
+> *Ponto fixo*, *ULP*, *ASLR*, *savestate*, *NVRAM*: definições em
+> [00 — Glossário](00-glossario.md).
+
 ## A regra
 
 > Partindo do mesmo estado e recebendo os mesmos inputs, as duas máquinas

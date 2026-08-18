@@ -1,5 +1,8 @@
 # 03 — Protocolo
 
+> Termos de rede (*datagrama*, *RTT*, *SRTT*, *jitter*, *reordenação*,
+> *HMAC*) estão explicados em [00 — Glossário](00-glossario.md).
+
 ## Princípio
 
 **Só inputs trafegam.** Nunca estado, nunca posições, nunca "o oponente está

@@ -1,5 +1,8 @@
 # 04 — Uso local
 
+> Não sabe o que é um *perfil de rede*, ou o que significa `delay20`? Veja
+> [00 — Glossário: os cinco perfis](00-glossario.md#os-cinco-perfis-de-rede).
+
 ## Controles
 
 Teclado e gamepad são lidos **os dois** a cada frame e combinados com OR, então

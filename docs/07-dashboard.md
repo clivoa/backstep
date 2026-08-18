@@ -1,5 +1,8 @@
 # 07 — Dashboard
 
+> O que cada métrica significa e como lê-la está em
+> [00 — Glossário: métricas](00-glossario.md#as-métricas-que-o-laboratório-reporta).
+
 ## Subir
 
 ```bash

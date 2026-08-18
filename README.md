@@ -18,6 +18,7 @@ previsões, rollbacks e desyncs.
 
 | Documento | Assunto |
 |---|---|
+| [00 — Glossário](docs/00-glossario.md) | **Comece aqui.** Todo termo técnico explicado do zero |
 | [01 — Teoria](docs/01-teoria.md) | O que é rollback, por que existe, o que ele custa |
 | [02 — Arquitetura](docs/02-arquitetura.md) | Os oito crates e por que a fronteira está onde está |
 | [03 — Protocolo](docs/03-protocolo.md) | Formato de datagrama, autenticação, handshake |
@@ -30,6 +31,7 @@ previsões, rollbacks e desyncs.
 | [10 — Custos](docs/10-custos.md) | Quanto custa uma sessão, e onde o dinheiro some |
 | [11 — Cleanup](docs/11-cleanup.md) | Como destruir tudo e conferir que sumiu |
 | [12 — Troubleshooting](docs/12-troubleshooting.md) | Sintomas, causas e o que olhar primeiro |
+| [13 — Cobertura](docs/13-cobertura.md) | O que foi validado, o que não foi, e o próximo passo |
 
 ---
 

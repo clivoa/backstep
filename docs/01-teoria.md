@@ -1,5 +1,8 @@
 # 01 — Teoria: por que rollback existe
 
+> Se algum termo aqui for novo — *lockstep*, *previsão*, *frame confirmado*,
+> *jitter* — o [00 — Glossário](00-glossario.md) define todos do zero.
+
 ## O problema
 
 Um jogo de luta a 60 Hz decide o resultado de uma troca de golpes em janelas de

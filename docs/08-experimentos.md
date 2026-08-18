@@ -12,13 +12,21 @@ Cinco perfis de rede, 180 segundos cada, bot contra bot na arena, semente fixa
 (4242), input delay de 1 frame, limite de previsão de 8 frames, buffer de 16
 estados.
 
-| Perfil | Atraso | Jitter | Perda | Reordenação |
-|---|---|---|---|---|
-| `natural` | — | — | — | — |
-| `delay20` | 20 ms | — | — | — |
-| `jitter30` | 30 ms | ±15 ms | — | — |
-| `loss2` | — | — | 2% | — |
-| `combined` | 40 ms | ±20 ms | 2% | 0,5% |
+| Perfil | Atraso | Jitter | Perda | Reordenação | RTT medido |
+|---|---|---|---|---|---|
+| `natural` | — | — | — | — | 16,6 ms |
+| `delay20` | 20 ms | — | — | — | 70 ms |
+| `jitter30` | 30 ms | ±15 ms | — | — | 84–88 ms |
+| `loss2` | — | — | 2% | — | 27 ms |
+| `combined` | 40 ms | ±20 ms | 2% | 0,5% | 97–105 ms |
+
+**O que cada perfil imita, o que ele isola, e o que é jitter afinal:** cada um
+tem explicação própria em
+[00 — Glossário: os cinco perfis](00-glossario.md#os-cinco-perfis-de-rede).
+
+Em resumo: `natural` é o controle, `delay20` isola a distância, `jitter30` isola
+a *variação* da latência, `loss2` isola a perda para testar a redundância, e
+`combined` é o pior caso que o laboratório se propõe a aguentar.
 
 O impedimento é aplicado aos datagramas de **saída** de cada peer, então o RTT
 observado é aproximadamente o dobro do atraso unidirecional configurado. Isso é
@@ -238,6 +246,13 @@ uma taxa fixa de 60 Hz, com oito repetições de largura fixa. Nem perda, nem
 atraso, nem rollback mudam quanto o protocolo põe no cabo.
 
 ## O que os experimentos não medem
+
+> **Antes de tudo: uma máquina, dois processos, loopback.** Nenhum número deste
+> documento veio de dois computadores diferentes, muito menos de localizações
+> diferentes. Isso deixa **sem nenhuma evidência** justamente as regras de
+> determinismo entre máquinas (ponto fixo, sem `HashMap`, `overflow-checks`) que
+> boa parte do projeto existe para garantir. O inventário completo do que foi e
+> do que não foi validado está em [13 — Cobertura](13-cobertura.md).
 
 - **Percepção.** Nenhum número aqui diz se o jogo *parece* bom. Um rollback de
   profundidade 2 é invisível; um de profundidade 8 num momento de troca de golpes
