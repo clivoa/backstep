@@ -244,6 +244,14 @@ pub unsafe extern "C" fn retro_get_system_av_info(info: *mut retro_system_av_inf
     }
 }
 
+const RETRO_ENVIRONMENT_GET_LOG_INTERFACE: c_uint = 27;
+const RETRO_LOG_ERROR: c_uint = 3;
+
+#[repr(C)]
+struct retro_log_callback {
+    log: Option<unsafe extern "C" fn(level: c_uint, fmt: *const std::os::raw::c_char, ...)>,
+}
+
 #[no_mangle]
 pub extern "C" fn retro_set_environment(cb: retro_environment_t) {
     with_state(|s| s.callbacks.environment = Some(cb));
@@ -257,6 +265,34 @@ pub extern "C" fn retro_set_environment(cb: retro_environment_t) {
             &mut format as *mut _ as *mut c_void,
         )
     };
+
+    // Ask for the log interface and use it, the way FBNeo reports a missing ROM
+    // file. This is the only test that drives the host's C variadic shim across
+    // a real dlopen boundary; the format arguments matter, because the shim's
+    // whole job is running `vsnprintf` on them.
+    let mut log = retro_log_callback { log: None };
+    // SAFETY: GET_LOG_INTERFACE takes a `retro_log_callback *`.
+    let answered = unsafe {
+        cb(
+            RETRO_ENVIRONMENT_GET_LOG_INTERFACE,
+            &mut log as *mut _ as *mut c_void,
+        )
+    };
+    if answered {
+        if let Some(log_fn) = log.log {
+            // SAFETY: the frontend handed back a variadic C function matching
+            // this format string's arguments.
+            unsafe {
+                log_fn(
+                    RETRO_LOG_ERROR,
+                    c"ROM at index %d with name %s and CRC 0x%08x is required\n".as_ptr(),
+                    7_i32,
+                    c"fake.key".as_ptr(),
+                    0x5474_a3c6_u32,
+                );
+            }
+        }
+    }
 }
 
 #[no_mangle]

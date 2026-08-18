@@ -51,14 +51,25 @@ pub struct HostState {
     pub unhandled_environment: Vec<c_uint>,
     /// Messages the core asked the frontend to display.
     ///
-    /// This is the *only* diagnostic channel a stable-Rust frontend has. The
-    /// libretro log interface needs a C-variadic function, which stable Rust
-    /// cannot define, so it is refused -- and without capturing these, a core
-    /// that fails to load a ROM fails silently with no reason given. FBNeo in
-    /// particular returns success from `retro_load_game` even when the romset
-    /// is unusable, and explains itself only here.
+    /// Note this is *not* where a core reports a broken romset: FBNeo puts its
+    /// notifications here but sends load diagnostics to the log interface
+    /// below, which is why capturing only these left ROM failures unexplained.
     pub messages: Vec<String>,
+    /// Lines the core wrote to the libretro log interface, oldest first.
+    ///
+    /// This is the channel that actually names a missing ROM file. It requires
+    /// a C-variadic function, which stable Rust cannot define, so the frontend
+    /// hands the core a small C shim (`src/log_shim.c`) that formats the
+    /// varargs and calls back in here.
+    ///
+    /// Capped, because a core that logs per frame would otherwise grow this
+    /// without bound over a 180-second session.
+    pub log_lines: Vec<(u32, String)>,
 }
+
+/// How many core log lines to keep. Load failures are reported in the first
+/// few hundred lines; beyond that the log is per-frame noise.
+const MAX_LOG_LINES: usize = 512;
 
 static HOST: LazyLock<Mutex<HostState>> = LazyLock::new(|| {
     Mutex::new(HostState {
@@ -130,6 +141,7 @@ pub fn reset_state() {
         h.input_polls = 0;
         h.unhandled_environment.clear();
         h.messages.clear();
+        h.log_lines.clear();
     });
 }
 
@@ -166,6 +178,68 @@ pub fn render_messages() -> String {
         return String::new();
     }
     format!("\n  core said: {}", messages.join("\n  core said: "))
+}
+
+// --- the log interface -----------------------------------------------------
+
+// Formats varargs and calls `rollback_libretro_log_line`. Defined in C.
+unsafe extern "C" {
+    fn rollback_libretro_log_shim(level: c_uint, fmt: *const c_char, ...);
+}
+
+/// Called by the C shim, once per formatted log line.
+///
+/// # Safety
+/// `line` is a NUL-terminated string valid for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rollback_libretro_log_line(level: c_uint, line: *const c_char) {
+    if line.is_null() {
+        return;
+    }
+    // SAFETY: the shim always passes a NUL-terminated buffer it owns.
+    let text = unsafe { CStr::from_ptr(line) }
+        .to_string_lossy()
+        .into_owned();
+    let text = text.trim_end().to_string();
+    if text.is_empty() {
+        return;
+    }
+    with_host(|h| {
+        if h.log_lines.len() < MAX_LOG_LINES {
+            h.log_lines.push((level, text));
+        }
+    });
+}
+
+/// Lines the core logged, oldest first, paired with their level.
+pub fn log_lines() -> Vec<(u32, String)> {
+    with_host(|h| h.log_lines.clone())
+}
+
+/// Human name for a `RETRO_LOG_*` level.
+pub fn log_level_name(level: u32) -> &'static str {
+    match level {
+        RETRO_LOG_DEBUG => "debug",
+        RETRO_LOG_INFO => "info",
+        RETRO_LOG_WARN => "warn",
+        RETRO_LOG_ERROR => "error",
+        _ => "?",
+    }
+}
+
+/// The core's errors, formatted for an error message.
+///
+/// Errors only. `info` is where FBNeo puts one "No romset found at ..." line
+/// per search path per romset, and `warn` is where it mentions optional
+/// frontend features it would have liked -- both bury the handful of lines
+/// that say why the load failed. `just inspect-core` prints every level.
+pub fn render_log_errors() -> String {
+    let lines: Vec<String> = log_lines()
+        .into_iter()
+        .filter(|(level, _)| *level == RETRO_LOG_ERROR)
+        .map(|(_, text)| format!("\n  core error: {text}"))
+        .collect();
+    lines.concat()
 }
 
 // --- callbacks -------------------------------------------------------------
@@ -305,11 +379,19 @@ pub unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> bool {
         | RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL
         | RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME
         | RETRO_ENVIRONMENT_SET_ROTATION => true,
-        // Deliberately unanswered. The log interface in particular needs a
-        // C-variadic function, which stable Rust cannot define; cores fall back
-        // to their own logging when it is refused.
-        RETRO_ENVIRONMENT_GET_LOG_INTERFACE
-        | RETRO_ENVIRONMENT_GET_PERF_INTERFACE
+        RETRO_ENVIRONMENT_GET_LOG_INTERFACE => {
+            if data.is_null() {
+                return false;
+            }
+            // SAFETY: GET_LOG_INTERFACE passes a `retro_log_callback *`.
+            unsafe {
+                (*(data as *mut retro_log_callback)).log = Some(rollback_libretro_log_shim);
+            }
+            true
+        }
+        // Deliberately unanswered: none of these change what the core
+        // simulates, and answering them is work with no payoff here.
+        RETRO_ENVIRONMENT_GET_PERF_INTERFACE
         | RETRO_ENVIRONMENT_GET_INPUT_BITMASKS
         | RETRO_ENVIRONMENT_GET_LANGUAGE
         | RETRO_ENVIRONMENT_GET_LIBRETRO_PATH => false,

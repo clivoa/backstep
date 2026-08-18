@@ -37,14 +37,15 @@ pub enum CoreError {
         "core reports a serialize size of zero, so no game is actually running.\n\
          \n\
          FBNeo returns success from retro_load_game even when the romset is \n\
-         unusable -- it shows the reason on the emulated screen rather than \n\
-         telling the frontend -- so a zero state size is how an incomplete \n\
-         romset surfaces here.\n\
+         unusable, so a zero state size is how an incomplete romset surfaces \n\
+         here. The core's own errors follow, if it logged any -- an \n\
+         'is required' line names the file that is missing.\n\
          \n\
-         Most common cause: a missing file. Current CPS-2 sets include a \n\
-         decryption key (for SFA3: sfa3.key, 20 bytes) inside the romset zip; \n\
-         an older set without it has every other file correct and still cannot \n\
-         run. Compare your zip against the romset FBNeo expects.{}",
+         Two cases that produce a complete-looking zip which still cannot run: \n\
+         a CPS-2 set without its decryption key (sfa3.key for SFA3), and a Neo \n\
+         Geo set without neogeo.zip, the BIOS, which must sit beside the game \n\
+         or in the system directory.{}{}",
+        crate::host::render_log_errors(),
         crate::host::render_messages()
     )]
     NoSerializeSupport,

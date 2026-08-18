@@ -53,6 +53,15 @@ fn main() {
         println!("  {m}");
     }
 
+    println!("\n-- core log --");
+    let log = host::log_lines();
+    if log.is_empty() {
+        println!("(none -- the core did not ask for the log interface)");
+    }
+    for (level, line) in &log {
+        println!("  [{}] {line}", host::log_level_name(*level));
+    }
+
     println!("\n-- environment commands this host refused --");
     let refused = host::with_host(|h| h.unhandled_environment.clone());
     if refused.is_empty() {

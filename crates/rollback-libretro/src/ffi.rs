@@ -138,6 +138,11 @@ pub struct retro_log_callback {
     pub log: Option<unsafe extern "C" fn(level: c_uint, fmt: *const c_char, ...)>,
 }
 
+pub const RETRO_LOG_DEBUG: c_uint = 0;
+pub const RETRO_LOG_INFO: c_uint = 1;
+pub const RETRO_LOG_WARN: c_uint = 2;
+pub const RETRO_LOG_ERROR: c_uint = 3;
+
 pub type retro_environment_t = unsafe extern "C" fn(cmd: c_uint, data: *mut c_void) -> bool;
 pub type retro_video_refresh_t =
     unsafe extern "C" fn(data: *const c_void, width: c_uint, height: c_uint, pitch: usize);

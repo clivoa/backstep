@@ -71,6 +71,33 @@ fn the_core_loads_reports_itself_and_unloads() {
 }
 
 #[test]
+fn the_core_can_log_through_the_c_variadic_shim() {
+    let _guard = serialised();
+    rollback_libretro::host::reset_state();
+    let _core = LibretroCore::load(fake_core_path()).unwrap();
+
+    // The fake core logs one ERROR line shaped like FBNeo's missing-ROM report.
+    // Getting this back means the C shim ran `vsnprintf` over the varargs and
+    // handed the finished string to Rust -- the whole point of the shim, and
+    // the only channel on which FBNeo names a file it could not find.
+    let lines = rollback_libretro::host::log_lines();
+    assert_eq!(
+        lines,
+        vec![(
+            3,
+            "ROM at index 7 with name fake.key and CRC 0x5474a3c6 is required".to_string()
+        )],
+        "the shim must format %d, %s and %08x, and strip the trailing newline"
+    );
+
+    // And the error-only view is what a load failure would quote.
+    assert_eq!(
+        rollback_libretro::host::render_log_errors(),
+        "\n  core error: ROM at index 7 with name fake.key and CRC 0x5474a3c6 is required"
+    );
+}
+
+#[test]
 fn a_second_core_in_the_same_process_is_refused() {
     let _guard = serialised();
     let first = LibretroCore::load(fake_core_path()).unwrap();

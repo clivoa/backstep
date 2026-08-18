@@ -178,22 +178,47 @@ Caused by: core reports a serialize size of zero, so no game is actually running
 ```
 
 O core carregou, o ROM foi aceito, e nenhum jogo está rodando. O FBNeo retorna
-sucesso de `retro_load_game` mesmo com um romset inutilizável — ele mostra o
-motivo na tela emulada em vez de contar ao frontend — então um estado de tamanho
-zero é como um set incompleto aparece aqui.
+sucesso de `retro_load_game` mesmo com um romset inutilizável, então um estado de
+tamanho zero é como um set incompleto aparece aqui.
 
-Causa mais comum: **falta um arquivo**. Sets CPS-2 atuais incluem a chave de
-descriptografia dentro do zip (para o SFA3: `sfa3.key`, 20 bytes, CRC
-`54fa39c6`); um set antigo tem os outros 20 arquivos corretos e mesmo assim não
-roda.
+Causa quase sempre: **falta um arquivo**. Leia as linhas `core error:` logo
+abaixo do erro — o FBNeo nomeia cada arquivo que exigiu e não encontrou:
 
-```bash
-just inspect-core rom=/caminho/sfa3.zip
+```
+core error: [FBNeo] ROM at index 20 with name sfa3.key and CRC 0x54fa39c6 is required
 ```
 
-Isso imprime o que o core diz, quais comandos de ambiente ele pediu, e o tamanho
-do estado. Para conferir arquivo por arquivo, compare os CRCs do seu zip com
-`Sfa3RomDesc[]` em `src/burn/drv/capcom/d_cps2.cpp` no FBNeo.
+Os dois casos que produzem um zip aparentemente completo e mesmo assim não rodam:
+
+| Sintoma | Falta | Onde pôr |
+|---|---|---|
+| `sfa3.key ... is required` | chave CPS-2, 20 bytes, CRC `54fa39c6` | dentro do próprio `sfa3.zip` |
+| `sp-s3.sp1`, `sm1.sm1`, `sfix.sfix`, `000-lo.lo` | `neogeo.zip`, o BIOS do Neo Geo | ao lado do jogo, ou em `artifacts/system/` |
+
+Para ver tudo que o core disse, inclusive em quais caminhos ele procurou cada
+romset:
+
+```bash
+just inspect-core rom=/caminho/do.zip
+```
+
+Isso imprime o log completo do core, os comandos de ambiente que ele pediu, e o
+tamanho do estado. Para conferir arquivo por arquivo, compare os CRCs do seu zip
+com o `RomDesc[]` do driver no FBNeo (`src/burn/drv/capcom/d_cps2.cpp` para
+CPS-2, `src/burn/drv/neogeo/d_neogeo.cpp` para Neo Geo).
+
+## O log do core não aparece
+
+```
+-- core log --
+(none -- the core did not ask for the log interface)
+```
+
+O host oferece `GET_LOG_INTERFACE` através de um shim de C
+(`crates/rollback-libretro/src/log_shim.c`), porque `retro_log_printf_t` é
+variádica e Rust estável não define função variádica. Se o log sai vazio com o
+FBNeo, o shim não foi compilado — confira se o `build.rs` rodou e se há um
+compilador de C no `PATH`.
 
 ## O relatório sai vazio
 
