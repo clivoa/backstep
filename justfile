@@ -3,13 +3,13 @@
 #   just               list the recipes
 #   just test          the full gate: fmt, clippy, tests, shellcheck, terraform
 #   just local-up      Prometheus + Grafana on loopback
-#   just aws-up <sim> [rom]     sim = arena | sfa3 | lastblade2
+#   just aws-up <sim> [rom]     sim = arena | lastblade2
 #   just play   <sim> [rom]
 #   just bench
 #
-# Recipe arguments are POSITIONAL. `just play sim=sfa3` does not set `sim` --
+# Recipe arguments are POSITIONAL. `just play sim=lastblade2` does not set `sim` --
 # just takes everything after the recipe name as a positional value, so that
-# passes the literal string "sim=sfa3". Use `just play sfa3 /path/rom.zip`.
+# passes the literal string "sim=lastblade2". Use `just play lastblade2 /path/rom.zip`.
 # `just --list` shows each recipe's parameters and defaults.
 #   just collect       ALWAYS before aws-down
 #   just aws-down

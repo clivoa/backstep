@@ -149,7 +149,7 @@ pub fn bios_path(simulation: SimulationKind, system_dir: &Path) -> Option<std::p
         // beside the game and in the system directory, and this lab puts it in
         // the system directory so both peers ship it the same way.
         SimulationKind::LastBlade2 => Some(system_dir.join("neogeo.zip")),
-        SimulationKind::Arena | SimulationKind::Sfa3 => None,
+        SimulationKind::Arena => None,
     }
 }
 
@@ -199,12 +199,12 @@ mod tests {
     #[test]
     fn session_names_are_filesystem_safe() {
         let name = session_name(
-            SimulationKind::Sfa3,
+            SimulationKind::LastBlade2,
             "jitter 30/15",
             PlayerHandle::P2,
             "play",
         );
-        assert!(name.contains("sfa3"));
+        assert!(name.contains("lastblade2"));
         assert!(name.contains("p2"));
         assert!(name.ends_with("play"));
         assert!(

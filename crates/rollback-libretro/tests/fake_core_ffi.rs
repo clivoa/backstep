@@ -277,7 +277,7 @@ fn output_mode_does_not_change_the_machine_state() {
 fn a_full_rollback_session_over_the_ffi_converges() {
     let _guard = serialised();
     let config = SessionConfig {
-        simulation: SimulationKind::Sfa3,
+        simulation: SimulationKind::LastBlade2,
         ..Default::default()
     };
 

@@ -2,7 +2,8 @@
 //!
 //! Dials the EC2 instance on UDP/7000, runs the same session loop as the
 //! headless bot, and draws the simulation plus an overlay that makes the
-//! netcode visible. For SFA3 the boot script owns P1 until the match starts;
+//! netcode visible. For the emulated game the boot script owns P1 until the
+//! match starts;
 //! after that every frame comes from the controller.
 
 mod font;
@@ -249,11 +250,8 @@ fn main() -> Result<()> {
                 |renderer, arena: &Arena, _| renderer.draw_arena(arena),
             )
         }
-        SimulationKind::Sfa3 | SimulationKind::LastBlade2 => {
-            let game = match args.sim {
-                SimulationKind::LastBlade2 => Game::LastBlade2,
-                _ => Game::Sfa3,
-            };
+        SimulationKind::LastBlade2 => {
+            let game = Game::LastBlade2;
             let core_path = args
                 .core
                 .with_context(|| format!("--core is required for --sim {game}"))?;
@@ -404,7 +402,7 @@ where
 
         let frame = runner.session().current_frame().max(0) as u32;
 
-        // During the SFA3 boot the script owns the pad, so a stray press cannot
+        // During the boot the script owns the pad, so a stray press cannot
         // change the character selection on this peer only.
         let scripted = director.as_ref().and_then(|d| d.input(frame, slot));
         let local_input = scripted.unwrap_or_else(|| {

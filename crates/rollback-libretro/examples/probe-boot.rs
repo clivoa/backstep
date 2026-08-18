@@ -37,7 +37,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 5 {
         eprintln!("usage: probe-boot <core.so> <rom> <system-dir> <out-dir> [frames] [every]");
-        eprintln!("       PROBE_SCRIPT=sfa3|lastblade2 runs that game's boot macro");
+        eprintln!("       PROBE_SCRIPT=lastblade2 runs the boot macro");
         std::process::exit(2);
     }
     let core_path = PathBuf::from(&args[1]);

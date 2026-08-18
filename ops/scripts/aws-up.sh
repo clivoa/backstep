@@ -42,9 +42,8 @@ TF_DIR="${ROOT}/terraform"
 
 case "${SIM}" in
     arena) NEEDS_ROM=0; NEEDS_BIOS=0 ;;
-    sfa3) NEEDS_ROM=1; NEEDS_BIOS=0 ;;
     lastblade2) NEEDS_ROM=1; NEEDS_BIOS=1 ;;
-    *) echo "SIM must be arena, sfa3 or lastblade2, got '${SIM}'" >&2; exit 2 ;;
+    *) echo "SIM must be arena or lastblade2, got '${SIM}'" >&2; exit 2 ;;
 esac
 
 if [[ ${NEEDS_ROM} -eq 1 && -z "${ROM}" ]]; then

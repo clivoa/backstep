@@ -18,8 +18,6 @@ pub const NULL_FRAME: Frame = -1;
 pub enum SimulationKind {
     /// The instrumented deterministic 2D arena.
     Arena,
-    /// Street Fighter Alpha 3 hosted through the libretro core.
-    Sfa3,
     /// The Last Blade 2 hosted through the same libretro core.
     LastBlade2,
 }
@@ -28,7 +26,6 @@ impl SimulationKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             SimulationKind::Arena => "arena",
-            SimulationKind::Sfa3 => "sfa3",
             SimulationKind::LastBlade2 => "lastblade2",
         }
     }
@@ -40,10 +37,9 @@ impl std::str::FromStr for SimulationKind {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "arena" => Ok(SimulationKind::Arena),
-            "sfa3" => Ok(SimulationKind::Sfa3),
             "lastblade2" | "lastbld2" => Ok(SimulationKind::LastBlade2),
             other => Err(format!(
-                "unknown simulation '{other}' (expected arena|sfa3|lastblade2)"
+                "unknown simulation '{other}' (expected arena|lastblade2)"
             )),
         }
     }
@@ -332,7 +328,7 @@ mod tests {
         let base = SessionConfig::default();
         let mutations = [
             SessionConfig {
-                simulation: SimulationKind::Sfa3,
+                simulation: SimulationKind::LastBlade2,
                 ..base
             },
             SessionConfig { seed: 1, ..base },
@@ -386,7 +382,7 @@ mod tests {
 
     #[test]
     fn simulation_kind_round_trips_through_str() {
-        for kind in [SimulationKind::Arena, SimulationKind::Sfa3] {
+        for kind in [SimulationKind::Arena, SimulationKind::LastBlade2] {
             assert_eq!(kind.as_str().parse::<SimulationKind>().unwrap(), kind);
         }
         assert!("tekken".parse::<SimulationKind>().is_err());

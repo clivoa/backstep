@@ -234,15 +234,7 @@ whether the player noticed it, or would have preferred 100 ms of input delay
 instead. Answering that needs several players, blind comparisons, and a
 protocol this repository does not have.
 
-### 7. Street Fighter Alpha 3
-
-Blocked by an incomplete romset: the available set is missing `sfa3.key`, the
-CPS-2 decryption key, and none of FBNeo's eleven SFA3 variants does without one.
-See [09](09-the-last-blade-2.md).
-
-The libretro path is validated, with The Last Blade 2 in its place.
-
-### 8. One run per profile
+### 7. One run per profile
 
 There is no confidence interval on any number in this repository. Each cell in
 each table is one sample. For spread, vary the seed:
@@ -267,4 +259,3 @@ for s in 1 2 3 4 5; do SEED=$s DURATION=60 ./ops/scripts/bench.sh; done
    would close the last gap between the model and the thing it models.
 4. **Spread.** Vary the seed and aggregate, so the tables carry confidence
    intervals rather than single samples.
-5. **SFA3**, if a set with `sfa3.key` turns up.

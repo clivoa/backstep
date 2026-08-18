@@ -42,7 +42,7 @@ pub enum CoreError {
          'is required' line names the file that is missing.\n\
          \n\
          Two cases that produce a complete-looking zip which still cannot run: \n\
-         a CPS-2 set without its decryption key (sfa3.key for SFA3), and a Neo \n\
+         a CPS-2 set without its decryption key, and a Neo \n\
          Geo set without neogeo.zip, the BIOS, which must sit beside the game \n\
          or in the system directory.{}{}",
         crate::host::render_log_errors(),
@@ -379,7 +379,7 @@ impl LibretroCore {
 
     /// Reset the machine, as if the arcade board were power-cycled.
     ///
-    /// Used before the SFA3 boot script so both peers start from an identical
+    /// Used before the boot script so both peers start from an identical
     /// machine regardless of what ran before.
     pub fn reset(&mut self) {
         // SAFETY: legal at any point after `retro_init`.
@@ -425,9 +425,9 @@ fn cstr_to_string(p: *const std::os::raw::c_char) -> String {
 /// Map the lab's logical buttons onto the RetroPad.
 ///
 /// The layout follows FBNeo's default CPS-2 assignment, so the six attack
-/// buttons of SFA3 land where a Fightcade player would expect them:
+/// buttons land where a Fightcade player would expect them:
 ///
-/// | logical  | RetroPad | SFA3            |
+/// | logical  | RetroPad | Neo Geo         |
 /// |----------|----------|-----------------|
 /// | Attack   | Y        | light punch     |
 /// | Special  | X        | medium punch    |

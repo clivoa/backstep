@@ -133,7 +133,6 @@ impl PeerIdentity {
         w.u8(self.protocol_version);
         w.u8(match self.simulation {
             SimulationKind::Arena => 0,
-            SimulationKind::Sfa3 => 1,
             SimulationKind::LastBlade2 => 2,
         });
         w.u8(self.player.index() as u8);
@@ -148,7 +147,11 @@ impl PeerIdentity {
         let protocol_version = r.u8()?;
         let simulation = match r.u8()? {
             0 => SimulationKind::Arena,
-            1 => SimulationKind::Sfa3,
+            // 1 was Street Fighter Alpha 3, which this lab never managed to
+            // run: the available romset is missing its CPS-2 decryption key.
+            // The discriminant stays reserved so LastBlade2 keeps the byte it
+            // has always had on the wire, and a peer still claiming 1 is
+            // rejected rather than silently misread.
             2 => SimulationKind::LastBlade2,
             value => {
                 return Err(WireError::BadEnum {
@@ -689,7 +692,7 @@ mod tests {
             ),
             (
                 PeerIdentity {
-                    simulation: SimulationKind::Sfa3,
+                    simulation: SimulationKind::LastBlade2,
                     ..b
                 },
                 Incompatibility::Simulation,

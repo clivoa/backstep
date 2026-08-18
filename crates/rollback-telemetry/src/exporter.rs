@@ -686,7 +686,7 @@ mod tests {
 
     #[test]
     fn the_session_info_label_set_survives_quotes_and_backslashes() {
-        let mut info = SessionInfo::new(SimulationKind::Sfa3, "natural", "p2");
+        let mut info = SessionInfo::new(SimulationKind::LastBlade2, "natural", "p2");
         info.app_commit = "he said \"hi\"\\n".into();
         let text = render(&MetricsSnapshot::new(info));
         let line = text

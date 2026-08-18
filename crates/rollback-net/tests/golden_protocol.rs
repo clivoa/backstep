@@ -18,7 +18,7 @@ use rollback_net::{
 fn identity() -> PeerIdentity {
     PeerIdentity {
         protocol_version: PROTOCOL_VERSION,
-        simulation: SimulationKind::Sfa3,
+        simulation: SimulationKind::LastBlade2,
         player: PlayerHandle::P1,
         app_commit: *b"0123456789abcdef0123",
         config_hash: 0x0011_2233_4455_6677,
@@ -57,11 +57,16 @@ fn the_header_layout_is_fixed() {
 
 #[test]
 fn golden_hello() {
+    // Byte by byte: magic "RB", protocol version, kind 1, sequence, then the
+    // identity itself. The second `02` is SimulationKind::LastBlade2; it read
+    // `01` while this test used the SFA3 variant, which was removed once it
+    // became clear the game would never run here. LastBlade2 kept its
+    // discriminant, so nothing else in this vector moved.
     assert_eq!(
         encoded(1, Message::Hello(identity())),
         "5242010101000000\
          01\
-         01\
+         02\
          00\
          30313233343536373839616263646566303132 33\
          7766554433221100\

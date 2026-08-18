@@ -23,32 +23,6 @@ place.
 | Snapshot | 415 155 bytes |
 | Geometry | 320×224 |
 
-## About Street Fighter Alpha 3
-
-The lab specification named SFA3, so it is worth stating plainly why the
-measurements are of a different game.
-
-SFA3 is a Capcom CPS-2 title, and FBNeo supports it: the driver is there, and it
-lists 21 files. Twenty of them matched the available romset exactly. The
-twenty-first, `sfa3.key`, was missing. It is the 20-byte CPS-2 decryption key,
-CRC `54fa39c6`, and without it the driver never initialises, so
-`retro_serialize_size()` returns zero and no game runs.
-
-That is not a matter of finding a different revision. In
-`src/burn/drv/capcom/d_cps2.cpp`, the key entry is
-`{ "sfa3.key", 0x000014, 0x54fa39c6, CPS2_ENCRYPTION_KEY }`, and it does not
-carry the `BRF_OPT` flag. FBNeo's `open_archive()` counts any entry without that
-flag as required and returns false when it is absent. All eleven SFA3 variants
-in FBNeo require a key file, including `sfa3ud`, the pre-decrypted set, which
-asks for `phoenix.key`.
-
-Injecting a dummy key does not work either; validation is by CRC.
-
-The Last Blade 2 took its place. It runs on the same core, through the same
-libretro host, as the same `LibretroSimulation`, under the same rollback engine.
-Only the menu choreography differs. Nothing measured in this repository depends
-on SFA3, and the `--sim sfa3` path, while still present, has never been run.
-
 ## The core
 
 ### About the pinned commit

@@ -234,7 +234,6 @@ Two cases produce a zip that looks complete and still will not run:
 | Symptom | Missing | Where it goes |
 |---|---|---|
 | `sp-s3.sp1`, `sm1.sm1`, `sfix.sfix`, `000-lo.lo` | `neogeo.zip`, the Neo Geo BIOS | beside the game, or in `artifacts/system/` |
-| `sfa3.key ... is required` | the CPS-2 key, 20 bytes, CRC `54fa39c6` | inside `sfa3.zip` itself |
 
 To see everything the core said, including which paths it searched for each
 romset:

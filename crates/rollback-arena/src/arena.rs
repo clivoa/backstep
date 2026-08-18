@@ -5,7 +5,7 @@
 //! matters is an integer, the state blob is 204 bytes, and the checksum covers
 //! all of it, so a single wrong frame is caught by the next checksum exchange.
 //!
-//! Determinism rules obeyed here, all of which the SFA3 path gets for free from
+//! Determinism rules obeyed here, all of which the emulated path gets for free from
 //! the emulator but which have to be enforced by hand in native code:
 //!
 //! * no floating point (see [`crate::fixed`]);

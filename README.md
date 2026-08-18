@@ -121,7 +121,6 @@ listed with the rest rather than buried.
 | SDL2 client, overlay, keyboard and gamepad | done, **played end to end** | [18](docs/18-dashboards.md#5-human-against-bot) |
 | FBNeo core in a reproducible container | done, **different commit** | [09](docs/09-the-last-blade-2.md) |
 | Emulated game via `retro_serialize`, scripted boot, no ROM offsets | done | [09](docs/09-the-last-blade-2.md) |
-| **Street Fighter Alpha 3** | **not run** - romset lacks `sfa3.key` | [09](docs/09-the-last-blade-2.md) |
 | Prometheus, Grafana, JSONL, all listed metrics | done | [07](docs/07-dashboard.md) |
 | Five profiles, 180 s, `summary.csv` + self-contained HTML | done | [08](docs/08-experiments.md) |
 | Terraform VPC, SSM, S3, IMDSv2, 4 h terminate, no SSH | done | [06](docs/06-aws.md) |
@@ -131,12 +130,7 @@ listed with the rest rather than buried.
 | AWS smoke: handshake, session, collect, destroy | done, ×6 across three regions | [08](docs/08-experiments.md) |
 | Didactic documentation of every technical term | done | [00](docs/00-glossary.md) |
 
-**Two deviations, both forced and both documented.**
-
-*SFA3 was replaced by The Last Blade 2.* The available romset is missing
-`sfa3.key`, the 20-byte CPS-2 decryption key, and all eleven SFA3 variants in
-FBNeo require one. The substitute exercises the same core, the same libretro
-host and the same rollback engine, so nothing being demonstrated changed.
+**One deviation, forced and documented.**
 
 *The FBNeo commit differs.* The spec pinned
 `finalburnneo/FBNeo@f1c3545f…`, which has no `makefile.libretro`. The build uses
@@ -241,21 +235,6 @@ No savestates or personal logs. All of `artifacts/` is gitignored.
 No keys. The session key is ephemeral, generated per run, kept in SSM
 SecureString and in a local file with mode 0600, and never enters Terraform
 state or a command line.
-
-## Street Fighter Alpha 3
-
-The lab specification named SFA3, and the code still carries the boot script and
-the `--sim sfa3` path. It was never run, because the available romset is
-missing `sfa3.key`, the 20-byte CPS-2 decryption key. All eleven SFA3 variants
-in FBNeo require one, so no other revision avoids it.
-
-The Last Blade 2 took its place. It exercises the same core, the same libretro
-host, the same `LibretroSimulation` and the same rollback engine, so the thing
-being demonstrated is unchanged. The full diagnosis, down to the FBNeo source
-that makes the key mandatory, is in
-[09 - The Last Blade 2](docs/09-the-last-blade-2.md).
-
-Nothing in the measured results depends on SFA3, and nothing claims it ran.
 
 ## Out of scope
 

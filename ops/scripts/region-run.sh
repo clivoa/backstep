@@ -117,7 +117,7 @@ PY
     sims_run=""
     for sim in ${SIMS}; do
         case "${sim}" in
-            lastblade2|sfa3)
+            lastblade2)
                 [[ -n "${ROM}" ]] || { echo "!!! ${sim} needs a ROM" >&2; exit 2; }
                 run_one "${sim}" "${GAME_DURATION}" || ok=0
                 ;;

@@ -102,17 +102,15 @@ fn press(button: Button) -> PlayerInput {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Game {
     /// Street Fighter Alpha 3, Capcom CPS-2.
-    Sfa3,
     /// The Last Blade 2, SNK Neo Geo MVS.
     LastBlade2,
 }
 
 impl Game {
-    pub const ALL: [Game; 2] = [Game::Sfa3, Game::LastBlade2];
+    pub const ALL: [Game; 1] = [Game::LastBlade2];
 
     pub const fn as_str(self) -> &'static str {
         match self {
-            Game::Sfa3 => "sfa3",
             Game::LastBlade2 => "lastblade2",
         }
     }
@@ -120,7 +118,6 @@ impl Game {
     /// The romset name FBNeo expects, i.e. the zip's basename.
     pub const fn romset(self) -> &'static str {
         match self {
-            Game::Sfa3 => "sfa3",
             Game::LastBlade2 => "lastbld2",
         }
     }
@@ -133,7 +130,6 @@ impl Game {
     /// `sfix.sfix` and `000-lo.lo`.
     pub const fn needs_bios(self) -> bool {
         match self {
-            Game::Sfa3 => false,
             Game::LastBlade2 => true,
         }
     }
@@ -143,7 +139,6 @@ impl Game {
     pub const fn native_hz(self) -> f64 {
         match self {
             // CPS-2.
-            Game::Sfa3 => 59.629_0,
             // Neo Geo MVS, as FBNeo reports it through `retro_get_system_av_info`.
             Game::LastBlade2 => 59.180_0,
         }
@@ -157,8 +152,6 @@ impl Game {
     /// menu inputs.
     pub const fn cursor_steps(self, player: usize) -> u32 {
         match (self, player) {
-            (Game::Sfa3, 0) => 0,
-            (Game::Sfa3, _) => 3,
             (Game::LastBlade2, 0) => 0,
             (Game::LastBlade2, _) => 2,
         }
@@ -171,7 +164,6 @@ impl Game {
     /// player.
     pub fn boot_macro(self, player: usize) -> Macro {
         match self {
-            Game::Sfa3 => sfa3_boot(self.cursor_steps(player)),
             Game::LastBlade2 => last_blade_2_boot(self.cursor_steps(player)),
         }
     }
@@ -191,9 +183,8 @@ impl std::str::FromStr for Game {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "sfa3" => Ok(Game::Sfa3),
             "lastblade2" | "lastbld2" => Ok(Game::LastBlade2),
-            other => Err(format!("unknown game '{other}' (expected sfa3|lastblade2)")),
+            other => Err(format!("unknown game '{other}' (expected lastblade2)")),
         }
     }
 }
@@ -204,55 +195,10 @@ impl std::fmt::Display for Game {
     }
 }
 
-/// Frames to hold a menu button, and to wait afterwards.
-const TAP: u32 = 6;
-const SETTLE: u32 = 24;
-
-// --- SFA3 (CPS-2) ----------------------------------------------------------
-
-/// Frames to sit on the boot logos before touching anything.
-const SFA3_BOOT_WAIT: u32 = 420; // 7 s
-/// Frames to let the character-select intro and the round-start animation run.
-const SFA3_SELECT_INTRO: u32 = 180; // 3 s
-const SFA3_ROUND_INTRO: u32 = 300; // 5 s
-
-fn sfa3_boot(cursor_steps: u32) -> Macro {
-    let mut steps = vec![Step::wait(SFA3_BOOT_WAIT)];
-
-    // Insert a coin twice: CPS-2 boards want one credit per player, and a
-    // second coin on an already-credited machine is harmless.
-    for _ in 0..2 {
-        steps.push(Step::hold(TAP, press(Button::Coin)));
-        steps.push(Step::wait(SETTLE));
-    }
-
-    // Start: attract mode -> mode select -> character select.
-    for _ in 0..2 {
-        steps.push(Step::hold(TAP, press(Button::Start)));
-        steps.push(Step::wait(SETTLE));
-    }
-    steps.push(Step::wait(SFA3_SELECT_INTRO));
-
-    // Walk the cursor to the fixed slot.
-    for _ in 0..cursor_steps {
-        steps.push(Step::hold(TAP, press(Button::Right)));
-        steps.push(Step::wait(TAP * 2));
-    }
-
-    // Confirm the character, then the ISM/super-arts prompt that follows.
-    for _ in 0..2 {
-        steps.push(Step::hold(TAP, press(Button::Confirm)));
-        steps.push(Step::wait(SETTLE));
-    }
-    steps.push(Step::wait(SFA3_ROUND_INTRO));
-
-    Macro::new(steps)
-}
-
 // --- The Last Blade 2 (Neo Geo MVS) ----------------------------------------
 //
-// The Neo Geo boot is longer than CPS-2 because the BIOS runs its own memory
-// check and "MAX 330 MEGA PRO-GEAR SPEC" screen before the cartridge gets
+// The Neo Geo boot is long: the BIOS runs its own memory check and the
+// "MAX 330 MEGA PRO-GEAR SPEC" screen before the cartridge gets
 // control. Every constant here was read off `probe-boot` screenshots.
 
 /// Frames from reset to a machine that will accept a coin.
@@ -679,7 +625,6 @@ mod tests {
                 .find(|&f| m.at(f).unwrap() != PlayerInput::NEUTRAL)
                 .unwrap_or_else(|| panic!("{game} must press something"));
             let floor = match game {
-                Game::Sfa3 => SFA3_BOOT_WAIT,
                 Game::LastBlade2 => LB2_BOOT_WAIT,
             };
             assert_eq!(first_press, floor, "{game} touched the machine early");
@@ -740,7 +685,6 @@ mod tests {
 
     #[test]
     fn only_the_neo_geo_game_needs_a_bios() {
-        assert!(!Game::Sfa3.needs_bios());
         assert!(Game::LastBlade2.needs_bios());
     }
 
@@ -791,7 +735,7 @@ mod tests {
     #[test]
     fn the_bot_is_reproducible_from_its_seed() {
         let run = |seed| {
-            let mut bot = ScriptedBot::new(Game::Sfa3, seed, 1);
+            let mut bot = ScriptedBot::new(Game::LastBlade2, seed, 1);
             (0..3_000).map(|_| bot.decide()).collect::<Vec<_>>()
         };
         assert_eq!(run(11), run(11));

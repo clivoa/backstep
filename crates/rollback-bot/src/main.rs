@@ -260,11 +260,8 @@ fn main() -> Result<()> {
                 bot.decide(arena)
             })
         }
-        SimulationKind::Sfa3 | SimulationKind::LastBlade2 => {
-            let game = match args.sim {
-                SimulationKind::LastBlade2 => Game::LastBlade2,
-                _ => Game::Sfa3,
-            };
+        SimulationKind::LastBlade2 => {
+            let game = Game::LastBlade2;
             let core_path = args
                 .core
                 .with_context(|| format!("--core is required for --sim {game}"))?;

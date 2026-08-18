@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! cargo run -p rollback-libretro --example inspect-core -- \
-//!     cores/fbneo_libretro.so /path/to/sfa3.zip artifacts/system
+//!     cores/fbneo_libretro.so /path/to/lastbld2.zip artifacts/system
 //! ```
 
 use std::path::PathBuf;
