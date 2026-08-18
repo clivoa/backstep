@@ -1,4 +1,4 @@
-# 06 — AWS
+# 06 - AWS
 
 ## What gets built
 

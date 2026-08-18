@@ -1,7 +1,7 @@
-# 09 — The Last Blade 2 under FBNeo
+# 09 - The Last Blade 2 under FBNeo
 
 > *libretro*, *core*, *romset*, *BIOS*, *NVRAM*, *boot script*: all defined in
-> [00 — Glossary](00-glossary.md#emulation-and-libretro).
+> [00 - Glossary](00-glossary.md#emulation-and-libretro).
 
 ## Why a real game
 
@@ -86,7 +86,7 @@ If the specified commit is eventually merged into the libretro fork, change
 emulated calendar clock from the host clock, which makes it non-deterministic
 across processes and therefore unusable for rollback. The build patches it and
 fails loudly if the line it edits ever moves. Measurement and reasoning in
-`docker/fbneo/determinism.md` and [05 — Determinism](05-determinism.md).
+`docker/fbneo/determinism.md` and [05 - Determinism](05-determinism.md).
 
 ### Building
 
@@ -322,7 +322,7 @@ before loading, on both sides, every session.
 ### Core options
 
 Pinned in `PINNED_CORE_OPTIONS`; the table and the reason for each is in
-[05 — Determinism](05-determinism.md). The important one is
+[05 - Determinism](05-determinism.md). The important one is
 `fbneo-frameskip=0`: frameskip would make `retro_run` advance a variable number
 of frames, and rollback assumes exactly one.
 
@@ -366,9 +366,9 @@ just aws-down
 3. **P2 acting.** The scripted bot produces continuous input, including combos
    and motion inputs.
 4. **Observable rollback.** Under `combined`, the overlay shows yellow and red
-   frames and the counters climb. [14 — Video](14-video.md) has recordings.
+   frames and the counters climb. [14 - Video](14-video.md) has recordings.
 5. **Converging checksums.** `checksums_compared` rises on both peers and
-   `desync` stays at 0, including over the real Madrid–Frankfurt link.
+   `desync` stays at 0, including over the real Madrid-Frankfurt link.
 
 ## CI without a ROM
 

@@ -1,7 +1,7 @@
-# 04 — Running it locally
+# 04 - Running it locally
 
 > Not sure what a *network profile* is, or what `delay20` means? See
-> [00 — Glossary: the network profiles](00-glossary.md#the-network-profiles).
+> [00 - Glossary: the network profiles](00-glossary.md#the-network-profiles).
 
 ## Controls
 
@@ -12,21 +12,21 @@ hold a direction on the stick and press buttons on the keyboard.
 |---|---|---|---|
 | Up | `W` / `↑` | D-pad ↑, left stick | jump |
 | Down | `S` / `↓` | D-pad ↓ | crouch |
-| Left | `A` / `←` | D-pad ← | — |
-| Right | `D` / `→` | D-pad → | — |
-| Attack | `J` | `X` | C — kick |
-| Block | `K` | `A` | **A — weak slash** |
-| Special | `L` | `Y` | D — repel |
-| Confirm | `U` | `B` | B — strong slash |
+| Left | `A` / `←` | D-pad ← | - |
+| Right | `D` / `→` | D-pad → | - |
+| Attack | `J` | `X` | C - kick |
+| Block | `K` | `A` | **A - weak slash** |
+| Special | `L` | `Y` | D - repel |
+| Confirm | `U` | `B` | B - strong slash |
 | Start | `Enter` | `Start` | start |
 | Coin | `Space` | `Back/Select` | insert coin |
-| Quit | `Esc` | — | — |
+| Quit | `Esc` | - | - |
 
 That right-hand column is transposed on purpose, and it caught us out: under
 FBNeo's classic pad layout, RetroPad **B** maps to Neo Geo button **A**. So the
 button this repo calls `Block` is the one Neo Geo menus accept as "yes", and the
 one called `Confirm` is the only one that does not confirm. The full table is in
-[09 — The Last Blade 2](09-the-last-blade-2.md).
+[09 - The Last Blade 2](09-the-last-blade-2.md).
 
 Three deliberate details:
 
@@ -91,7 +91,7 @@ cargo run --release -p rollback-client -- \
 The key must be **identical** on both sides. Otherwise every datagram fails the
 HMAC and the handshake times out. That is correct behaviour, but the symptom
 (`no compatible peer answered`) is not obvious. See
-[12 — Troubleshooting](12-troubleshooting.md).
+[12 - Troubleshooting](12-troubleshooting.md).
 
 For The Last Blade 2, add `--core cores/fbneo_libretro.so --rom /path/lastbld2.zip`
 to both, give each peer its **own** `--system-dir`, and put `neogeo.zip` in each.
@@ -116,10 +116,10 @@ And along the bottom, a strip of the last 180 frames, one pixel each:
 
 | Colour | Means |
 |---|---|
-| Green | **Confirmed** — both inputs were known, nothing was guessed |
-| Yellow | **Predicted** — the remote input was a guess |
-| Red | **Corrected** — a rollback happened on this frame |
-| Grey | **Stalled** — the prediction window filled and the simulation waited |
+| Green | **Confirmed** - both inputs were known, nothing was guessed |
+| Yellow | **Predicted** - the remote input was a guess |
+| Red | **Corrected** - a rollback happened on this frame |
+| Grey | **Stalled** - the prediction window filled and the simulation waited |
 
 One detail about the strip: a rollback is painted on the frame where it was
 **noticed**, not on the frames it actually re-simulated. Those have already
@@ -181,7 +181,7 @@ jq 'select(.record=="session_end")' artifacts/logs/*-p1-bench.jsonl
 ```
 
 For anything more involved, load it into Elastic. See
-[15 — Elastic](15-elastic.md).
+[15 - Elastic](15-elastic.md).
 
 ## Wayland, SDL2 and the frame clock
 

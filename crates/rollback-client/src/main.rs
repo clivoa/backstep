@@ -10,8 +10,10 @@ mod input;
 mod overlay;
 mod render;
 
+use std::cell::RefCell;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
@@ -20,7 +22,9 @@ use rollback_arena::Arena;
 use rollback_core::{NetworkProfile, PlayerHandle, SessionConfig, Simulation, SimulationKind};
 use rollback_libretro::{BootDirector, Game, LibretroCore, LibretroSimulation};
 use rollback_net::UdpTransport;
-use rollback_runner::{app, handshake, Role, RunnerConfig, SessionRunner, StepOutcome};
+use rollback_runner::{
+    app, handshake, Role, RunnerConfig, SessionRunner, StepOutcome, VideoRecorder,
+};
 use rollback_telemetry::SessionInfo;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -80,6 +84,18 @@ struct Args {
 
     #[arg(long, default_value = "artifacts/logs")]
     log_dir: PathBuf,
+
+    /// Record the presented frames to an MP4, through ffmpeg.
+    ///
+    /// What lands in the file is what the player saw: one frame per advanced
+    /// frame, none of the re-simulated ones. Emulated simulations only -- the
+    /// arena has no framebuffer to capture.
+    ///
+    /// Costs roughly 65% of a core, which slows the frame loop and widens the
+    /// phase difference between the peers. A recorded session is good footage
+    /// and a worse measurement; see docs/08-experiments.md.
+    #[arg(long)]
+    record: Option<PathBuf>,
 
     #[arg(long, default_value = rollback_telemetry::DEFAULT_EXPORTER_ADDR)]
     metrics: String,
@@ -150,6 +166,15 @@ fn main() -> Result<()> {
         local_identity,
         Duration::from_secs(60),
     )
+    .inspect_err(|_| {
+        // The refusal names a category, not a field: the config hash folds six
+        // values into one u64. Print what this side offered so the two can be
+        // diffed against the other peer's line.
+        eprintln!(
+            "  this peer: {}",
+            rollback_runner::handshake::describe_identity(&local_identity)
+        );
+    })
     .context("handshake failed")?;
     eprintln!(
         "connected: {}",
@@ -272,13 +297,45 @@ fn main() -> Result<()> {
                 geometry.max_height.max(geometry.base_height),
             )?;
 
+            // Shared with the draw closure, which needs to push frames, and
+            // with the code below, which has to close the file. An Rc rather
+            // than moving it in: a recording that is never finalised is an
+            // unplayable file, and that includes the case where the session
+            // ended badly.
+            let recorder = Rc::new(RefCell::new(match &args.record {
+                Some(path) => {
+                    let rec = VideoRecorder::start(
+                        path,
+                        geometry.base_width,
+                        geometry.base_height,
+                        config.tick_rate_hz,
+                    )?;
+                    eprintln!(
+                        "recording {}x{} at {} Hz to {}",
+                        geometry.base_width,
+                        geometry.base_height,
+                        config.tick_rate_hz,
+                        path.display()
+                    );
+                    Some(rec)
+                }
+                None => None,
+            }));
+
             let runner = SessionRunner::new(
                 LibretroSimulation::new(core)
                     .with_checksum_skip(rollback_libretro::core::CHECKSUM_SKIP_BYTES),
                 transport,
                 runner_config,
             )?;
-            play(
+
+            let sink = Rc::clone(&recorder);
+            // The frame number only moves when the session advances, so this
+            // records one frame per presented frame. Without the check a stall
+            // would push the same picture again and stretch the video past the
+            // wall-clock time it represents.
+            let mut last_recorded: Option<u32> = None;
+            let result = play(
                 runner,
                 frame_budget,
                 &mut renderer,
@@ -286,10 +343,30 @@ fn main() -> Result<()> {
                 pad.as_ref(),
                 Some(BootDirector::new(game)),
                 player.index(),
-                move |renderer, sim: &LibretroSimulation, _| {
+                move |renderer, sim: &LibretroSimulation, frame| {
+                    if let Some(rec) = sink.borrow_mut().as_mut() {
+                        if last_recorded != Some(frame) {
+                            let video = sim.video();
+                            rec.push(video.width, video.height, &video.pixels)?;
+                            last_recorded = Some(frame);
+                        }
+                    }
                     renderer.draw_video(&mut texture, &sim.video())
                 },
-            )
+            );
+
+            if let Some(rec) = recorder.borrow_mut().take() {
+                let written = rec.frames_written;
+                let skipped = rec.frames_skipped;
+                match rec.finish() {
+                    Ok(path) => eprintln!(
+                        "recorded {written} frames to {} ({skipped} skipped)",
+                        path.display()
+                    ),
+                    Err(e) => eprintln!("recording failed to finish: {e}"),
+                }
+            }
+            result
         }
     }
 }

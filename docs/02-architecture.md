@@ -1,14 +1,14 @@
-# 02 — Architecture
+# 02 - Architecture
 
 ## The system, end to end
 
 Two machines, one UDP link, and nothing crossing it but inputs. Everything else
-— video, audio, positions, health — is recomputed independently on each side
+- video, audio, positions, health - is recomputed independently on each side
 from the same inputs, which is the entire premise the lab rests on.
 
 ```mermaid
 flowchart LR
-    subgraph MADRID["Madrid — desktop, Arch Linux"]
+    subgraph MADRID["Madrid - desktop, Arch Linux"]
         HUMAN([keyboard / gamepad]) --> CLIENT["<b>rollback-client</b><br/>SDL2, overlay"]
         CLIENT --> SESS1["<b>RollbackSession</b><br/>predict · save · re-simulate"]
         SESS1 --> SIM1["Simulation<br/>arena · FBNeo core"]
@@ -17,7 +17,7 @@ flowchart LR
         TEL1 --> JSONL[("JSONL log")]
     end
 
-    subgraph AWS["AWS EC2 t3.small — Frankfurt · São Paulo · Tokyo"]
+    subgraph AWS["AWS EC2 t3.small - Frankfurt · São Paulo · Tokyo"]
         SESS2["<b>RollbackSession</b><br/>the same code"] --> SIM2["Simulation<br/>identical build"]
         BOT["<b>rollback-bot</b><br/>scripted FSM on P2"] --> SESS2
         SESS2 --> TEL2["rollback-telemetry"]
@@ -34,7 +34,7 @@ flowchart LR
 Three things in that picture are load-bearing:
 
 **`RollbackSession` is the same code on both sides.** Not a client version and a
-server version — there is no server. Both peers are equal, and both simulate the
+server version - there is no server. Both peers are equal, and both simulate the
 whole game.
 
 **The remote peer's metrics travel over the game link**, as `TelemetrySummary`,
@@ -90,8 +90,8 @@ flowchart TD
     class CORE,RUNNER engine
 ```
 
-The two crates that implement `Simulation` — `rollback-arena` and
-`rollback-libretro` — are siblings, and neither knows the other exists. Swapping
+The two crates that implement `Simulation` - `rollback-arena` and
+`rollback-libretro` - are siblings, and neither knows the other exists. Swapping
 a 204-byte arena for a 415 KB arcade emulator changes which sibling the runner
 was handed and nothing else.
 
@@ -168,7 +168,7 @@ peer.
 Step 7 is where the liveness check lives, and it used to sit *only* there, after
 the stalled branch returned early. A peer whose partner died was therefore the
 one peer that never looked. One sat at 20 735 stalls waiting for a frame that
-was never coming. See [05 — Determinism](05-determinism.md).
+was never coming. See [05 - Determinism](05-determinism.md).
 
 Transmission is the other. A stalled peer must keep pumping the transport, because
 a datagram already handed to `send` is *in flight* and a real network delivers it
@@ -180,8 +180,8 @@ it survived every profile up to `combined`. See
 
 The pattern is worth naming, because it caught the same code twice: a stall
 means "produce nothing new", not "stop participating". Anything that keeps the
-session honest about the outside world — noticing the peer, delivering what is
-already committed — has to run on both paths.
+session honest about the outside world - noticing the peer, delivering what is
+already committed - has to run on both paths.
 
 ## Where each concern lives
 
@@ -214,7 +214,7 @@ synchronisation. It only has to be reproducible from the seed, so that
 
 `ScriptedBot` carries an extra restriction: it **reads nothing from the game**.
 It cannot, without ROM memory offsets, which this lab deliberately refuses (the
-reasoning is in [09 — The Last Blade 2](09-the-last-blade-2.md)). It plays a
+reasoning is in [09 - The Last Blade 2](09-the-last-blade-2.md)). It plays a
 fixed move list (chain combos, quarter-circles, dragon punch, guard, parry,
 throw) and knows which way it is facing, and that is all.
 

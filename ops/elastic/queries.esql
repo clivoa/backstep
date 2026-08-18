@@ -1,0 +1,152 @@
+# ES|QL for every scenario this lab measured.
+#
+#   ./ops/scripts/elastic-esql.py            # run them all, print the tables
+#   ./ops/scripts/elastic-esql.py distance   # run one
+#
+# Paste any of these into Kibana's Discover (ES|QL mode) to get the same table
+# with a chart beside it.
+#
+# Blocks are separated by a `-- name: description` line. Everything up to the
+# next one is a single query.
+#
+# A note that applies to all of them: the metrics index holds a snapshot per
+# second per session, and the counters inside are cumulative. So the final value
+# of a session is MAX(counter), and averaging a counter across a session would
+# be meaningless. Rates (fps, SRTT) are instantaneous, so those use AVG.
+
+-- sessions: what was measured, and where
+FROM rollback-metrics
+| STATS sessions = COUNT_DISTINCT(session),
+        checksums = SUM(MV_MAX(`local.checksums_compared`))
+    BY mode, simulation
+| SORT mode, simulation
+
+-- distance: what the round trip costs, region by region
+FROM rollback-metrics
+| WHERE mode IN ("frankfurt", "saopaulo", "tokyo")
+| STATS srtt_ms = ROUND(AVG(`derived.srtt_ms`), 1),
+        max_depth = MAX(`local.max_rollback_depth`),
+        stalls = MAX(`local.stalls`),
+        fps = ROUND(AVG(`derived.effective_fps`), 2),
+        rollbacks = MAX(`local.rollbacks`)
+    BY session, mode, simulation
+| SORT srtt_ms ASC, session
+
+-- saturation: the window is 8 frames, and 133 ms one way fills it
+FROM rollback-metrics
+| WHERE mode IN ("frankfurt", "saopaulo", "tokyo")
+| EVAL one_way_ms = `derived.srtt_ms` / 2,
+       window_ms = prediction_limit * 1000.0 / 60
+| STATS one_way = ROUND(AVG(one_way_ms), 0),
+        window = ROUND(AVG(window_ms), 0),
+        depth = MAX(`local.max_rollback_depth`),
+        stalls = MAX(`local.stalls`)
+    BY mode
+| EVAL fits_in_window = one_way < window
+| SORT one_way
+
+-- asymmetry: the peer that is ahead does the predicting
+FROM rollback-metrics
+| WHERE mode IN ("frankfurt", "saopaulo", "tokyo")
+| STATS rollbacks = MAX(`local.rollbacks`) BY mode, player, simulation
+| SORT mode, simulation, player
+
+-- accuracy: the one number distance does not move
+FROM rollback-metrics
+| STATS predicted = MAX(`local.predicted_frames`),
+        missed = MAX(`local.mispredicted_frames`)
+    BY session, mode, player
+| WHERE predicted > 0
+| EVAL accuracy_pct = ROUND(100.0 * (1 - TO_DOUBLE(missed) / predicted), 1)
+| KEEP mode, player, accuracy_pct, predicted
+| SORT accuracy_pct ASC
+
+-- human: is a person harder to predict than the scripted bot?
+--
+-- P1's accuracy is how well P1 predicted P2. In the played session P1 is the
+-- person, so it is P2's accuracy that measures predicting a human.
+FROM rollback-metrics
+| WHERE mode IN ("human", "frankfurt")
+| STATS predicted = MAX(`local.predicted_frames`),
+        missed = MAX(`local.mispredicted_frames`)
+    BY session, mode, player, simulation
+| WHERE predicted > 0 AND simulation == "lastblade2"
+| EVAL accuracy_pct = ROUND(100.0 * (1 - TO_DOUBLE(missed) / predicted), 1),
+       predicting = CASE(mode == "human" AND player == "p2", "a HUMAN",
+                         mode == "human", "the bot (human session)",
+                         "the bot (bot session)")
+| KEEP predicting, accuracy_pct, mode, player
+| SORT accuracy_pct ASC
+
+-- tuning: who pays for a 267 ms link, the CPU or the player
+FROM rollback-metrics
+| WHERE STARTS_WITH(mode, "tune-")
+| STATS input_delay = MAX(input_delay),
+        prediction_limit = MAX(prediction_limit),
+        fps = ROUND(AVG(`derived.effective_fps`), 2),
+        stalls = MAX(`local.stalls`),
+        resim = ROUND(AVG(`derived.resimulation_overhead`), 2),
+        depth = MAX(`local.max_rollback_depth`)
+    BY mode, player
+| EVAL input_lag_ms = ROUND(input_delay * 1000.0 / 60, 0)
+| KEEP mode, player, input_delay, input_lag_ms, prediction_limit, fps, stalls, resim, depth
+| SORT mode, player
+
+-- cost: where a frame's 16 667 microseconds go
+FROM rollback-metrics
+| STATS advance = MAX(`local.advance_nanos`),
+        save = MAX(`local.save_state_nanos`),
+        load = MAX(`local.load_state_nanos`),
+        presented = MAX(`local.frames_presented`),
+        resimulated = MAX(`local.frames_resimulated`),
+        rollbacks = MAX(`local.rollbacks`),
+        state_bytes = MAX(`local.state_bytes_max`)
+    BY session, simulation
+| WHERE presented > 0
+| EVAL simulated = presented + resimulated,
+       advance_us = ROUND(advance / 1000.0 / simulated, 0),
+       save_us = ROUND(save / 1000.0 / simulated, 0),
+       load_us_per_rollback = ROUND(load / 1000.0 / (rollbacks + 1), 0)
+| KEEP simulation, state_bytes, advance_us, save_us, load_us_per_rollback
+| SORT simulation, save_us DESC
+
+-- depth_histogram: how deep the corrections actually go
+FROM rollback-events
+| WHERE event == "rolled_back"
+| STATS corrections = COUNT(*) BY depth, mode
+| SORT mode, depth
+
+-- desync: the result that matters most, and it is empty
+FROM rollback-events
+| WHERE event == "desync"
+| STATS desyncs = COUNT(*) BY session
+
+-- loss: what the real links actually dropped
+--
+-- Grouped by session, not just by mode. Each mode covers up to four sessions,
+-- and MAX across them would put one session's packet count on the same row as
+-- another's loss figure, which reads as a contradiction and is really two runs
+-- averaged into one misleading line.
+FROM rollback-metrics
+| WHERE mode IN ("frankfurt", "saopaulo", "tokyo", "human")
+| STATS loss_pct = ROUND(MAX(`derived.loss_pct`), 3),
+        we_sent = MAX(`link.packets_sent`),
+        they_sent = MAX(`link.highest_sequence`),
+        we_received = MAX(`link.unique_received`),
+        auth_failures = MAX(`link.auth_failures`),
+        malformed = MAX(`link.malformed`)
+    BY mode, session
+// Loss is a gap in the PEER's sequence numbers, so it is measured against what
+// they sent, not against what we sent. Comparing our `packets_sent` to our
+// `unique_received` compares two unrelated counters and invents losses that
+// did not happen.
+| EVAL dropped = (they_sent + 1) - we_received
+| KEEP mode, loss_pct, they_sent, we_received, dropped, auth_failures, malformed
+| SORT loss_pct DESC, mode
+
+-- stalls_over_time: when in the session the freezing happens
+FROM rollback-events
+| WHERE event == "stalled" AND mode IN ("tokyo", "saopaulo", "human")
+| STATS stalls = COUNT(*) BY mode, waiting_for
+| SORT stalls DESC
+| LIMIT 20

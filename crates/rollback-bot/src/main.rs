@@ -98,6 +98,17 @@ struct Args {
     #[arg(long)]
     record: Option<PathBuf>,
 
+    /// Seconds to wait for the other peer before giving up.
+    ///
+    /// Two minutes is right for `bench`, where both peers are launched by the
+    /// same script seconds apart. It is wrong for `play`: a person has to sit
+    /// down, and anything done between `aws-up` and launching the client eats
+    /// the window. The remote peer then exits, leaving an instance that is
+    /// billing, answers SSM, and refuses every datagram -- which from the
+    /// client looks like a handshake that hangs and then fails for no reason.
+    #[arg(long, default_value_t = 120)]
+    handshake_timeout: u64,
+
     /// Where to write the JSONL session log.
     #[arg(long, default_value = "artifacts/logs")]
     log_dir: PathBuf,
@@ -183,14 +194,26 @@ fn main() -> Result<()> {
         args.sim.as_str(),
         args.bind,
     );
-    eprintln!("waiting for the peer (handshake timeout 120 s)...");
+    eprintln!(
+        "waiting for the peer (handshake timeout {} s)...",
+        args.handshake_timeout
+    );
 
     let remote = handshake(
         &mut transport,
         role,
         local_identity,
-        Duration::from_secs(120),
+        Duration::from_secs(args.handshake_timeout),
     )
+    .inspect_err(|_| {
+        // The refusal names a category, not a field: the config hash folds six
+        // values into one u64. Print what this side offered so the two can be
+        // diffed against the other peer's line.
+        eprintln!(
+            "  this peer: {}",
+            rollback_runner::handshake::describe_identity(&local_identity)
+        );
+    })
     .context("handshake failed")?;
     eprintln!(
         "connected: {}",

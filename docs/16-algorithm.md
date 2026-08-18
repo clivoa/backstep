@@ -1,6 +1,6 @@
-# 16 — The algorithm, in detail
+# 16 - The algorithm, in detail
 
-[01 — Theory](01-theory.md) argues why rollback exists. This is how it is
+[01 - Theory](01-theory.md) argues why rollback exists. This is how it is
 implemented, at the level of data structures, invariants and code paths. It
 follows `crates/rollback-core/src/session.rs` closely enough that you can read
 the two side by side.
@@ -80,7 +80,7 @@ report as done.
 
 ## One correction, on a timeline
 
-The whole algorithm in a single exchange. P1 guesses frames 10–13, learns at
+The whole algorithm in a single exchange. P1 guesses frames 10-13, learns at
 frame 14 that its guess for 11 was wrong, and repairs the past inside one
 display frame.
 
@@ -91,23 +91,23 @@ sequenceDiagram
     participant NET as UDP
     participant P2 as P2 (EC2)
 
-    Note over P1: frame 10 — no input from P2 yet
+    Note over P1: frame 10 - no input from P2 yet
     P1->>P1: predict_remote() = P2's last confirmed input
     P1->>P1: save_state(10), checksum(10)
     P1->>P1: advance_frame([p1, guess], Present)
-    Note over P1: frames 11, 12, 13 — same, still guessing<br/>prediction_depth grows to 4
+    Note over P1: frames 11, 12, 13 - same, still guessing<br/>prediction_depth grows to 4
 
     P2-)NET: InputBatch { start: 11, inputs, ack }
     NET-)P1: arrives during frame 14
 
     P1->>P1: add_remote_inputs → frontier moves to 13
-    P1->>P1: reconcile() — used_remote[11] ≠ actual[11]
+    P1->>P1: reconcile() - used_remote[11] ≠ actual[11]
 
     rect rgba(200,80,80,0.18)
-        Note over P1: ROLLBACK, depth 3 — invisible to the player
+        Note over P1: ROLLBACK, depth 3 - invisible to the player
         P1->>P1: load_state(11)
         P1->>P1: drop snapshots ≥ 11 (built on a false guess)
-        P1->>P1: advance_frame(11, Resimulate) — video and audio discarded
+        P1->>P1: advance_frame(11, Resimulate) - video and audio discarded
         P1->>P1: advance_frame(12, Resimulate)
         P1->>P1: advance_frame(13, Resimulate)
     end
@@ -124,7 +124,7 @@ are not spread across later frames. That is why `prediction_limit` exists: eight
 re-simulations plus a normal frame must still fit in 16.7 ms.
 
 **`Resimulate` throws away video and audio, never state.** Without that the
-player would see frames 11–13 flash past and hear a burst of audio. With it,
+player would see frames 11-13 flash past and hear a burst of audio. With it,
 the correction is silent.
 
 ## The frame lifecycle
@@ -346,7 +346,7 @@ default 8 is **133 ms**, and that number is the whole configuration decision:
 
 | One-way delay | Against a 133 ms window | Measured |
 |---|---|---|
-| 25 ms (Frankfurt) | fits nearly five times over | depth 1–3, no stalls |
+| 25 ms (Frankfurt) | fits nearly five times over | depth 1-3, no stalls |
 | 133 ms (São Paulo, Tokyo) | fits exactly once | depth pinned at 8, stalls |
 
 At 133 ms one way, an input physically cannot arrive before the window it would
@@ -373,7 +373,7 @@ or the player absorbs it.
 
 ## Why the two peers do unequal amounts of work
 
-Rollback counts are routinely lopsided — 919 against 188 on one link, 590
+Rollback counts are routinely lopsided - 919 against 188 on one link, 590
 against 5 on another over the same route minutes later. It looks like a bug and
 it is not.
 
@@ -405,7 +405,7 @@ handshake order was the same.
 
 **The asymmetry is a short-link phenomenon.** It requires slack in the window.
 Once both peers saturate, both stall, and stalling is what re-couples the clocks
-— at 267 ms the counts landed within 4% of each other. The mechanism that limits
+- at 267 ms the counts landed within 4% of each other. The mechanism that limits
 the damage also distributes it.
 
 ## Desync detection
@@ -465,7 +465,7 @@ rollback is affordable at all: you pay the snapshot constantly and the restore
 rarely.
 
 Full breakdown, including how to query it per frame, in
-[15 — Elastic](15-elastic.md).
+[15 - Elastic](15-elastic.md).
 
 ## Reading the code
 

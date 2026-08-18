@@ -1,7 +1,7 @@
-# 14 — Video: watching rollback happen
+# 14 - Video: watching rollback happen
 
 > Terms like *rollback*, *stall*, *depth* and *profile* are defined in
-> [00 — Glossary](00-glossary.md).
+> [00 - Glossary](00-glossary.md).
 
 ## The problem with documenting rollback
 
@@ -122,7 +122,7 @@ because the machine was busy.
 
 So:
 
-- The numbers in [08 — Experiments](08-experiments.md) come from sessions
+- The numbers in [08 - Experiments](08-experiments.md) come from sessions
   **without** recording. Those are the measurement.
 - The videos are illustration. They show the behaviour faithfully, including the
   asymmetry, the stalls and the frame-for-frame agreement, but the counters in

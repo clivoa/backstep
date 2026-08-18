@@ -1,4 +1,4 @@
-# 08 — Experiments
+# 08 - Experiments
 
 ## The question
 
@@ -14,21 +14,21 @@ an experiment those five could not reach.
 
 | Profile | Delay | Jitter | Loss | Reordering | Measured RTT |
 |---|---|---|---|---|---|
-| `natural` | — | — | — | — | 16.6 ms |
-| `delay20` | 20 ms | — | — | — | 70 ms |
-| `jitter30` | 30 ms | ±15 ms | — | — | 84–88 ms |
-| `loss2` | — | — | 2% | — | 27 ms |
-| `combined` | 40 ms | ±20 ms | 2% | 0.5% | 97–105 ms |
-| `transcontinental` | 133 ms | ±5 ms | — | — | 267 ms |
+| `natural` | - | - | - | - | 16.6 ms |
+| `delay20` | 20 ms | - | - | - | 70 ms |
+| `jitter30` | 30 ms | ±15 ms | - | - | 84-88 ms |
+| `loss2` | - | - | 2% | - | 27 ms |
+| `combined` | 40 ms | ±20 ms | 2% | 0.5% | 97-105 ms |
+| `transcontinental` | 133 ms | ±5 ms | - | - | 267 ms |
 
 `transcontinental` is not one of the five and does not appear in `just bench`.
-It was added afterwards to reproduce the measured Madrid–São Paulo and
-Madrid–Tokyo link on loopback, and it is the only profile whose one-way delay
+It was added afterwards to reproduce the measured Madrid-São Paulo and
+Madrid-Tokyo link on loopback, and it is the only profile whose one-way delay
 exceeds the default prediction window. See
 [the tuning sweep](#fixing-a-link-that-is-too-long-the-tuning-sweep).
 
 What each profile imitates, what it isolates, and what jitter even is:
-[00 — Glossary: the network profiles](00-glossary.md#the-network-profiles).
+[00 - Glossary: the network profiles](00-glossary.md#the-network-profiles).
 
 Briefly: `natural` is the control, `delay20` isolates distance, `jitter30`
 isolates the *variation* in latency, `loss2` isolates loss to test the
@@ -36,7 +36,7 @@ redundancy, and `combined` is the worst case the lab sets out to survive.
 
 Impairment is applied to each peer's **outgoing** datagrams, so the observed RTT
 is roughly twice the configured one-way delay. Deliberate, and explained in
-[03 — Protocol](03-protocol.md).
+[03 - Protocol](03-protocol.md).
 
 ```bash
 just bench                  # five profiles, 180 s each, ~15 min
@@ -69,11 +69,11 @@ overwritten, see [13](13-coverage.md).
 
 | Profile | Peer | FPS | Rollbacks | Mean depth | Max | Accuracy | Extra work | Stalls | Checksums | Desync | RTT | RTT var | Loss | Bitrate | CPU |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| natural | P1 | 60.01 | 1 | 1.00 | 1 | — | 0.01% | 0 | 179 | no | 16.7 ms | 0.5 ms | 0.00% | 34.9 kbit/s | 2.0 s |
-| natural | P2 | 60.01 | 1 | 1.00 | 1 | — | 0.01% | 0 | 180 | no | 16.7 ms | 0.4 ms | 0.00% | 34.9 kbit/s | 2.2 s |
-| delay20 | P1 | 60.01 | 1 | 1.00 | 1 | — | 0.01% | 0 | 179 | no | 77.4 ms | 11.2 ms | 0.00% | 34.9 kbit/s | 2.2 s |
+| natural | P1 | 60.01 | 1 | 1.00 | 1 | - | 0.01% | 0 | 179 | no | 16.7 ms | 0.5 ms | 0.00% | 34.9 kbit/s | 2.0 s |
+| natural | P2 | 60.01 | 1 | 1.00 | 1 | - | 0.01% | 0 | 180 | no | 16.7 ms | 0.4 ms | 0.00% | 34.9 kbit/s | 2.2 s |
+| delay20 | P1 | 60.01 | 1 | 1.00 | 1 | - | 0.01% | 0 | 179 | no | 77.4 ms | 11.2 ms | 0.00% | 34.9 kbit/s | 2.2 s |
 | delay20 | P2 | 60.01 | 727 | 4.00 | 5 | 93.3% | 26.9% | 0 | 180 | no | 83.4 ms | 0.5 ms | 0.00% | 34.9 kbit/s | 2.2 s |
-| jitter30 | P1 | 60.01 | 1 | 1.00 | 1 | — | 0.01% | 0 | 179 | no | 84.0 ms | 19.2 ms | 0.00% | 34.9 kbit/s | 2.1 s |
+| jitter30 | P1 | 60.01 | 1 | 1.00 | 1 | - | 0.01% | 0 | 179 | no | 84.0 ms | 19.2 ms | 0.00% | 34.9 kbit/s | 2.1 s |
 | jitter30 | P2 | 60.01 | 683 | 4.25 | 5 | 93.7% | 26.9% | 0 | 180 | no | 86.9 ms | 17.9 ms | 0.00% | 34.9 kbit/s | 2.1 s |
 | loss2 | P1 | 60.01 | 1 | 1.00 | 1 | 87.5% | 0.01% | 0 | 176 | no | 16.5 ms | 0.5 ms | 1.89% | 34.9 kbit/s | 2.0 s |
 | loss2 | P2 | 60.01 | 12 | 1.00 | 1 | 94.2% | 0.11% | 0 | 177 | no | 16.7 ms | 0.4 ms | 1.89% | 34.9 kbit/s | 2.1 s |
@@ -119,11 +119,11 @@ complete rounds.
 
 | Profile | Peer | FPS | Rollbacks | Mean depth | Max | Accuracy | Extra work | Stalls | Checksums | Desync | RTT | Loss | CPU |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| natural | P1 | 60.01 | 0 | 0.00 | 0 | — | 0.0% | 0 | 240 | no | 16.6 ms | 0.00% | 85.6 s |
-| natural | P2 | 60.01 | 0 | 0.00 | 0 | — | 0.0% | 0 | 240 | no | 15.7 ms | 0.00% | 85.1 s |
-| delay20 | P1 | 60.00 | 0 | 0.00 | 0 | — | 0.0% | 0 | 240 | no | 69.9 ms | 0.00% | 69.3 s |
+| natural | P1 | 60.01 | 0 | 0.00 | 0 | - | 0.0% | 0 | 240 | no | 16.6 ms | 0.00% | 85.6 s |
+| natural | P2 | 60.01 | 0 | 0.00 | 0 | - | 0.0% | 0 | 240 | no | 15.7 ms | 0.00% | 85.1 s |
+| delay20 | P1 | 60.00 | 0 | 0.00 | 0 | - | 0.0% | 0 | 240 | no | 69.9 ms | 0.00% | 69.3 s |
 | delay20 | P2 | 59.85 | 1006 | 6.53 | 7 | 93.0% | 45.7% | 37 | 240 | no | 70.1 ms | 0.00% | 88.8 s |
-| jitter30 | P1 | 60.00 | 0 | 0.00 | 0 | — | 0.0% | 0 | 240 | no | 88.5 ms | 0.00% | 73.4 s |
+| jitter30 | P1 | 60.00 | 0 | 0.00 | 0 | - | 0.0% | 0 | 240 | no | 88.5 ms | 0.00% | 73.4 s |
 | jitter30 | P2 | 59.85 | 1006 | 6.90 | 8 | 93.0% | 48.2% | 37 | 240 | no | 84.2 ms | 0.00% | 93.7 s |
 | loss2 | P1 | 60.01 | 19 | 1.00 | 1 | 93.0% | 0.1% | 0 | 237 | no | 28.2 ms | 1.88% | 88.0 s |
 | loss2 | P2 | 60.01 | 4 | 1.00 | 1 | 95.1% | 0.0% | 0 | 237 | no | 27.5 ms | 1.88% | 87.7 s |
@@ -239,7 +239,7 @@ what survives on disk.
 ### What that proves that loopback could not
 
 **Determinism across different machines.** This was the project's most serious
-gap ([13 — Coverage](13-coverage.md)). 449 checksum comparisons agreed between
+gap ([13 - Coverage](13-coverage.md)). 449 checksum comparisons agreed between
 an Arch desktop with an i7-10750H and an Ubuntu 24.04 EC2 instance: different
 CPU, different OS, different libc. No desyncs.
 
@@ -312,7 +312,7 @@ just aws-down
 ```
 
 Both sessions together, including bring-up and teardown, cost under US$ 0.05.
-See [10 — Costs](10-costs.md).
+See [10 - Costs](10-costs.md).
 
 ## Three continents: where the prediction window runs out
 
@@ -363,13 +363,13 @@ distance. Madrid has direct fibre to both.
 
 ### At 267 ms the window is simply too small
 
-The prediction limit is 8 frames. At 60 Hz that is 133 ms — **exactly one way**
+The prediction limit is 8 frames. At 60 Hz that is 133 ms - **exactly one way**
 at this distance. An input cannot make the round trip before the window fills,
 so the session hits the limit on essentially every frame:
 
-- max depth pinned at **8** in all eight long-distance runs, against 1–3 at
+- max depth pinned at **8** in all eight long-distance runs, against 1-3 at
   Frankfurt;
-- stalls appear for the first time: 63–1 283, against **zero** at Frankfurt;
+- stalls appear for the first time: 63-1 283, against **zero** at Frankfurt;
 - effective FPS drops below 60 for the first time anywhere in this project.
 
 This is not a failure. It is the design working as specified: the session
@@ -401,7 +401,7 @@ here that misses 60 Hz.
 
 At Frankfurt the split is stark: 919 rollbacks against 188 on the game, 590
 against 5 on the arena. At São Paulo and Tokyo the peers land within 4% of each
-other — 1 316 against 1 345, 1 315 against 1 366, 658 against 658.
+other - 1 316 against 1 345, 1 315 against 1 366, 658 against 658.
 
 The asymmetry comes from starting phase: whoever completes the handshake first
 runs slightly ahead and does all the predicting ([above](#how-to-read-the-numbers)).
@@ -442,7 +442,7 @@ re-simulation is nearly free and what the numbers show is the **algorithm**
 saturating rather than the CPU running out. The Last Blade 2 suffers both at
 once, which is realistic but confounds the two causes.
 
-Results are given for the peer that runs *ahead* — the one that does the
+Results are given for the peer that runs *ahead* - the one that does the
 predicting, and therefore the one the tuning has to protect:
 
 | Configuration | Input delay | Limit | History | FPS | Stalls | Rollbacks | Max depth | Re-simulation | Accuracy | Input lag |
@@ -454,7 +454,7 @@ predicting, and therefore the one the tuning has to protect:
 
 "Re-simulation" is frames the CPU ran that the player never saw, as a multiple of
 the frames they did see. "Input lag" is `input_delay` converted to milliseconds
-at 60 Hz — what the player actually feels.
+at 60 Hz - what the player actually feels.
 
 **The baseline reproduces the cloud result.** 57.16 fps and 269 stalls on
 loopback, against 57.35 and 443 measured from São Paulo. Close enough that the
@@ -466,7 +466,7 @@ back to 60.02, stalls to zero, input lag unchanged at 17 ms. It looks free.
 It is not free. Depth rises from 8 to 18 and re-simulation rises to **1.17×**:
 the peer now simulates more than twice the frames it displays. On a 204-byte
 arena that is affordable. On a 415 KB state, where `save_state` alone costs
-2.27 ms of a 16.7 ms frame, 1.17× re-simulation does not fit — which is exactly
+2.27 ms of a 16.7 ms frame, 1.17× re-simulation does not fit - which is exactly
 why The Last Blade 2 fell to 56 fps at Tokyo while the arena held 59.5.
 
 **Buying the same result with input delay costs the player instead.** Eight
@@ -475,8 +475,8 @@ re-simulation to 0.50×. The CPU is comfortable. The price is 133 ms of input
 lag, which in a fighting game is roughly the difference between a reactable
 move and an unreactable one.
 
-**The middle is the honest answer.** `both` — 6 frames of delay with a 16-frame
-window — holds 60 fps with no stalls, at 0.84× re-simulation and 100 ms of lag.
+**The middle is the honest answer.** `both` - 6 frames of delay with a 16-frame
+window - holds 60 fps with no stalls, at 0.84× re-simulation and 100 ms of lag.
 
 The trade is not between "good" and "bad" configurations. It is a choice of
 **who pays for the distance**: the CPU, through deeper speculation and more
@@ -497,7 +497,7 @@ that a stalled peer should "do no local work at all". But `pump` is what moves
 the network emulator's delay queue onto the socket. A datagram already handed to
 `send` is **in flight**, and a real network delivers it whether or not the
 sender sends anything more. Modelling flight as a queue that only advances when
-the sender acts is fine until the sender stops — and the sender stops precisely
+the sender acts is fine until the sender stops - and the sender stops precisely
 when it is starving for what is in that queue. Each peer held the other's
 inputs hostage.
 
@@ -516,7 +516,7 @@ is the argument for keeping both.
 ## The numbers here come from un-recorded sessions
 
 Worth stating outright, because it is easy to conflate: the videos in
-[14 — Video](14-video.md) are not the source of these numbers.
+[14 - Video](14-video.md) are not the source of these numbers.
 
 Recording costs about 65% of a core per peer, and that shifts the measurement.
 Under `natural` on loopback, RTT p50 rises from **16.6 ms without recording to
@@ -530,7 +530,7 @@ The videos illustrate the behaviour faithfully. The numbers come from here.
 > First and foremost, for the loopback tables: one machine, two processes. No
 > number in this document's loopback sections came from two different computers.
 > The full inventory of what was and was not validated is in
-> [13 — Coverage](13-coverage.md).
+> [13 - Coverage](13-coverage.md).
 
 **Perception.** Nothing here says whether the game *feels* good. A depth-2
 rollback is invisible; a depth-8 one during a trade is quite noticeable, and a
@@ -572,10 +572,10 @@ CONFIGS="a:0:8:16 b:2:12:20 c:4:16:24" ./ops/scripts/tuning-sweep.sh
 The question this lab is set up to answer and has only half answered: **which
 input delay minimises the sum of perceived latency and visible corrections, for
 a given network profile?** The sweep above measures both halves of that sum
-separately — input lag in milliseconds, corrections as rollback depth and
-re-simulation ratio — for one link and four configurations. What it cannot
+separately - input lag in milliseconds, corrections as rollback depth and
+re-simulation ratio - for one link and four configurations. What it cannot
 supply is the exchange rate between them, because that is a question about
 perception, and nobody has played a session on this lab yet.
 
 Every number needed for the measurable half is in `summary.csv`, and
-[15 — Elastic](15-elastic.md) has the per-event detail to go with it.
+[15 - Elastic](15-elastic.md) has the per-event detail to go with it.

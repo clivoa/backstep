@@ -1,4 +1,4 @@
-# 00 — Glossary
+# 00 - Glossary
 
 Every technical term this repository uses, explained from scratch, with the
 number this lab actually uses and the reason it exists.
@@ -177,7 +177,7 @@ One detail that cost a lot of debugging: on the emulated core the checksum
 **ignores the first 2 048 bytes** of the savestate, because FBNeo recomputes
 rather than restores about 20 bytes of sound and timer bookkeeping. Without that
 exclusion the detector reported a desync on the first rollback of every session.
-Full reasoning in [05 — Determinism](05-determinism.md).
+Full reasoning in [05 - Determinism](05-determinism.md).
 
 ## Networks: what breaks the conversation
 
@@ -251,7 +251,7 @@ about 18 ms.
 The finer point, which only came out of per-event analysis: jitter does not
 raise the *mean* depth, it **widens the distribution**, and the wider tail is
 what eventually reaches the prediction limit. See
-[15 — Elastic](15-elastic.md).
+[15 - Elastic](15-elastic.md).
 
 ### Packet loss
 
@@ -318,12 +318,12 @@ underneath is loopback, so what you measure is the profile and nothing else.
 
 | Profile | Delay | Jitter | Loss | Reordering | Measured RTT |
 |---|---|---|---|---|---|
-| `natural` | — | — | — | — | 16.6 ms |
-| `delay20` | 20 ms | — | — | — | 70 ms |
-| `jitter30` | 30 ms | ±15 ms | — | — | 84–88 ms |
-| `loss2` | — | — | 2% | — | 27 ms |
-| `combined` | 40 ms | ±20 ms | 2% | 0.5% | 97–105 ms |
-| `transcontinental` | 133 ms | ±5 ms | — | — | 267 ms |
+| `natural` | - | - | - | - | 16.6 ms |
+| `delay20` | 20 ms | - | - | - | 70 ms |
+| `jitter30` | 30 ms | ±15 ms | - | - | 84-88 ms |
+| `loss2` | - | - | 2% | - | 27 ms |
+| `combined` | 40 ms | ±20 ms | 2% | 0.5% | 97-105 ms |
+| `transcontinental` | 133 ms | ±5 ms | - | - | 267 ms |
 
 `transcontinental` is a later addition and is not part of `just bench`. It
 reproduces a link that was measured rather than imagined, and it is the only
@@ -405,7 +405,7 @@ the sizing is being exercised for real rather than with comfortable margin.
 **Imitates:** Madrid to São Paulo, or Madrid to Tokyo. Both measured 267 ms
 round trip with about a millisecond of variance, so this profile is calibrated
 against real links rather than guessed at. Intercontinental fibre turns out to
-be **slow but very steady** — the opposite of what `jitter30` assumes.
+be **slow but very steady** - the opposite of what `jitter30` assumes.
 
 **Used for:** the case the other five cannot reach. 133 ms one way is exactly
 the 8-frame prediction window, so this is the only profile where an input
@@ -435,7 +435,7 @@ rollback's CPU cost**, and which one is decided by a few milliseconds at the
 start. Comparing "how many rollbacks does my game do" between two clients says
 nothing about network quality; it says who started first.
 
-The real session made that vivid. Over the same Madrid–Frankfurt link, fifteen
+The real session made that vivid. Over the same Madrid-Frankfurt link, fifteen
 minutes apart, Madrid paid 1 280 rollbacks to Frankfurt's 31 on one run, then
 Frankfurt paid 601 to Madrid's 19 on the next.
 
@@ -681,7 +681,7 @@ The interface that draws graphs on top of Prometheus.
 
 A search index and its interface. Prometheus answers "what is happening now";
 Elastic answers "what exactly happened around frame 2399". Different question,
-different tool. See [15 — Elastic](15-elastic.md).
+different tool. See [15 - Elastic](15-elastic.md).
 
 ### JSONL
 

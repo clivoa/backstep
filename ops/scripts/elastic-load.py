@@ -139,6 +139,20 @@ def flatten(prefix: str, value, out: dict) -> None:
         out[prefix] = representable(value)
 
 
+def mode_of(session: str) -> str:
+    """Trailing `--mode` label of a session name, or "unknown".
+
+    Names look like `1787061449-lastblade2-natural-p1-tokyo`. Everything after
+    the player slot is the label, which may itself contain hyphens
+    (`tune-wide-window`), so split from the left on a fixed count rather than
+    taking the last field.
+    """
+    parts = session.split("-")
+    if len(parts) >= 5:
+        return "-".join(parts[4:])
+    return "unknown"
+
+
 def documents(path: Path, include_all: bool):
     """Yield (index, doc) for one session log."""
     session = path.stem
@@ -169,6 +183,12 @@ def documents(path: Path, include_all: bool):
         base = {
             "@timestamp": started_ms + rec.get("t_ms", 0),
             "session": session,
+            # The trailing label of the session name, set by `--mode`: the
+            # region for a cloud run, `human` for a played one, `tune-<name>`
+            # for a sweep. Without it as its own field, comparing Frankfurt
+            # against Tokyo in Kibana means pattern-matching on the session
+            # name, which no aggregation can do.
+            "mode": mode_of(session),
             "simulation": info.get("simulation"),
             "profile": info.get("profile"),
             "player": info.get("player"),

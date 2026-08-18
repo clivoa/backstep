@@ -1,7 +1,7 @@
-# 01 — Why rollback exists
+# 01 - Why rollback exists
 
 > New to *lockstep*, *prediction*, *confirmed frame* or *jitter*?
-> [00 — Glossary](00-glossary.md) defines all of them from scratch.
+> [00 - Glossary](00-glossary.md) defines all of them from scratch.
 
 ## The problem
 
@@ -65,7 +65,7 @@ a rule that repeats the last one is right far more often than it has any
 business being.
 
 Measured here, three separate times on three different setups: **93%**. The
-number barely moves. [08 — Experiments](08-experiments.md) has the details.
+number barely moves. [08 - Experiments](08-experiments.md) has the details.
 
 The point is not that prediction is clever. It is that prediction does not need
 to be right every time, only often enough that corrections stay rare and
@@ -86,7 +86,7 @@ outside it.
 The arena's snapshot is 204 bytes. The Last Blade 2 under FBNeo is **415 155**.
 Both fit in the 16.7 ms frame budget, but only one of them fits comfortably.
 `save_state` alone eats 14% of every frame on the emulated side, rollback or no
-rollback. [15 — Elastic](15-elastic.md) has that broken down.
+rollback. [15 - Elastic](15-elastic.md) has that broken down.
 
 ### CPU
 
@@ -111,7 +111,7 @@ at the first disagreement.
 
 Getting there was not free. The emulator turned out not to be deterministic as
 shipped, and the checksum turned out to be measuring the wrong bytes. Both
-stories are in [05 — Determinism](05-determinism.md), and both are more
+stories are in [05 - Determinism](05-determinism.md), and both are more
 instructive than the parts that worked.
 
 ## Confirmed frames
@@ -143,11 +143,11 @@ do something else: **make the mechanism visible and measurable.**
   from a fixed seed, so an experiment is *repeatable* rather than anecdotal.
 - The Last Blade 2 exists to prove none of it depends on the simulation being a
   toy: the same engine drives an opaque 415 KB arcade machine, and
-  [14 — Video](14-video.md) shows it happening.
+  [14 - Video](14-video.md) shows it happening.
 
 ## Going deeper
 
-This document argues why. [16 — The algorithm](16-algorithm.md) covers how: the
+This document argues why. [16 - The algorithm](16-algorithm.md) covers how: the
 data structures, the frame lifecycle, `reconcile()` and `rollback_to()` line by
 line, the invariants that hold it together, and the complexity of each step.
 

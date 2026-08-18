@@ -1,4 +1,4 @@
-# 11 — Cleanup
+# 11 - Cleanup
 
 ## The order matters
 

@@ -1,7 +1,7 @@
-# 15 — Elastic: the questions `summary.csv` cannot answer
+# 15 - Elastic: the questions `summary.csv` cannot answer
 
 > Terms like *depth*, *SRTT*, *stall* and *profile* are defined in
-> [00 — Glossary](00-glossary.md).
+> [00 - Glossary](00-glossary.md).
 
 ## Why another tool
 
@@ -33,7 +33,7 @@ The loader creates the Kibana data views itself, so `http://127.0.0.1:5601`
 opens ready to query.
 
 Loopback only and no password, for the same reason as the metrics exporter: this
-is an analysis tool on one machine, not a service. See [06 — AWS](06-aws.md) for
+is an analysis tool on one machine, not a service. See [06 - AWS](06-aws.md) for
 the same argument at length.
 
 ## Two indices
@@ -101,7 +101,7 @@ does what it was built for, and that loss and latency are different problems.
 
 ### The RTT tail the average hides
 
-On the real Madrid–Frankfurt session:
+On the real Madrid-Frankfurt session:
 
 ```
 p50  49.97 ms      p90  52.21 ms      p99  54.96 ms      max  57.11 ms

@@ -23,6 +23,16 @@ DURATION="${DURATION:-180}"
 # look alike on disk. Losing a run to an ambiguous filename costs a rebuild of
 # the whole session; a label costs nothing.
 MODE="${MODE:-play}"
+# How long the remote peer waits for the local one before giving up.
+#
+# The bot's own default of 120 s suits `bench`, where a script launches both
+# peers seconds apart. A human session is different: `aws-up` finishes, then a
+# person has to read the output, find the window and sit down. Two minutes of
+# that leaves an instance up and billing whose peer has already exited -- it
+# still answers SSM and still shows a listening socket in `systemctl status`
+# right up until it does not, so the failure reads as a handshake that hangs
+# for no reason. Fifteen minutes by default; the auto-shutdown still bounds it.
+HANDSHAKE_TIMEOUT="${HANDSHAKE_TIMEOUT:-900}"
 # These are part of the handshake's configuration hash, so the remote peer must
 # be told the same values or the session is refused before it starts.
 PREDICTION_LIMIT="${PREDICTION_LIMIT:-8}"
@@ -164,6 +174,7 @@ REMOTE_ARGS="--sim ${SIM} --player p2 --bind 0.0.0.0:${PORT} --profile ${PROFILE
 REMOTE_ARGS="${REMOTE_ARGS} --seed ${SEED} --duration ${DURATION} --mode ${MODE}"
 REMOTE_ARGS="${REMOTE_ARGS} --prediction-limit ${PREDICTION_LIMIT} --input-delay ${INPUT_DELAY}"
 REMOTE_ARGS="${REMOTE_ARGS} --state-history ${STATE_HISTORY}"
+REMOTE_ARGS="${REMOTE_ARGS} --handshake-timeout ${HANDSHAKE_TIMEOUT}"
 REMOTE_ARGS="${REMOTE_ARGS} --log-dir /opt/rollback/artifacts/logs"
 REMOTE_ARGS="${REMOTE_ARGS} --system-dir /opt/rollback/artifacts/system"
 if [[ ${RECORD:-0} -eq 1 && ${NEEDS_ROM} -eq 1 ]]; then
@@ -251,6 +262,31 @@ if [[ "${STATUS}" != "Success" ]]; then
     exit 1
 fi
 
+# Record what the remote peer was actually started with, so the local side can
+# agree with it by construction instead of by both hard-coding the same numbers.
+#
+# The handshake hashes simulation, seed, tick rate, input delay, prediction
+# limit and state history together, and refuses the session if a single one
+# differs. Before this file existed, `just play` passed none of them and used
+# the client's built-in defaults, so `just aws-up` followed by `just play` --
+# the documented path -- always failed with "session configuration mismatch".
+# It went unnoticed for as long as it did because every session until the first
+# human one had both peers launched by the same script.
+SESSION_ENV="${ROOT}/artifacts/session.env"
+cat > "${SESSION_ENV}" <<ENV
+# Written by aws-up.sh. Read by 'just play'. Do not edit by hand: every value
+# here has to match what the remote peer was started with.
+ROLLBACK_PEER=${PEER}
+ROLLBACK_SIM=${SIM}
+ROLLBACK_PROFILE=${PROFILE}
+ROLLBACK_SEED=${SEED}
+ROLLBACK_INPUT_DELAY=${INPUT_DELAY}
+ROLLBACK_PREDICTION_LIMIT=${PREDICTION_LIMIT}
+ROLLBACK_STATE_HISTORY=${STATE_HISTORY}
+ROLLBACK_MODE=${MODE}
+ENV
+chmod 0600 "${SESSION_ENV}"
+
 cat <<SUMMARY
 
 ==> the remote peer is up
@@ -259,11 +295,22 @@ cat <<SUMMARY
   instance       ${INSTANCE}
   bucket         ${BUCKET}
   shell          aws ssm start-session --region ${REGION} --target ${INSTANCE}
+  config         seed=${SEED} input_delay=${INPUT_DELAY} prediction_limit=${PREDICTION_LIMIT} state_history=${STATE_HISTORY}
+  waiting        ${HANDSHAKE_TIMEOUT}s for you to connect
 
 Now, locally:
 
-  export ROLLBACK_SESSION_KEY_FILE=${ROOT}/artifacts/session.key
   just play ${SIM}${ROM:+ ${ROM}}
+
+'just play' reads artifacts/session.env, so it agrees with the remote peer on
+every field the handshake checks. If you would rather run the client yourself:
+
+  export ROLLBACK_SESSION_KEY_FILE=${ROOT}/artifacts/session.key
+  ./target/release/rollback-client --sim ${SIM} --peer ${PEER} \
+    --profile ${PROFILE} --seed ${SEED} --input-delay ${INPUT_DELAY} \
+    --prediction-limit ${PREDICTION_LIMIT} --state-history ${STATE_HISTORY} \
+    --mode ${MODE} --log-dir ${ROOT}/artifacts/logs${ROM:+ \\
+    --core ${ROOT}/cores/fbneo_libretro.so --rom ${ROM} --system-dir ${ROOT}/artifacts/system}
 
 Remember: 'just collect' BEFORE 'just aws-down'.
 SUMMARY

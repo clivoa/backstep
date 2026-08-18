@@ -1,20 +1,36 @@
-# Rollback Netcode Lab: Madrid ⇄ Frankfurt, São Paulo, Tokyo
+# Backstep
 
-A Rust workspace that demonstrates rollback netcode at two levels:
+*A backstep is the move you make to undo a commitment you have already made.
+So is a rollback.*
+
+An answer to a question that reading about it never settled: **what is rollback
+netcode actually doing, and what does it cost?**
+
+Every fighting-game forum will tell you rollback "guesses your opponent's input
+and rewinds when it is wrong". That sentence is true and explains nothing. How
+often is the guess right? How deep does the rewind go? What happens when your
+opponent is on another continent? Those have numbers, and the only way to get
+them was to build the thing and measure it.
+
+So: a Rust workspace that implements rollback netcode at two levels.
 
 1. A deterministic, fully instrumented **2D arena**. Every byte of state is
    auditable, the snapshot is 204 bytes, and the checksum covers all of it.
-2. **The Last Blade 2** running on the official FBNeo core through the libretro
-   API, driven by exactly the same rollback engine.
+2. **The Last Blade 2**, a 1998 Neo Geo fighting game, running on the official
+   FBNeo emulator core, driven by exactly the same rollback engine.
 
-The local player drives P1 through SDL2. A headless EC2 instance drives P2
-through a scripted FSM. The peers exchange only inputs, over UDP authenticated
-with HMAC-SHA256, while Prometheus, Grafana, JSONL logs and an HTML report
-record connectivity, predictions, rollbacks and desyncs.
+The second one is the point. If the engine needed to understand the game, it
+could not drive an arcade emulator whose state is a 415 KB opaque blob. It does
+not, so it can.
 
-Both simulations ran from one desk in Madrid against three AWS regions on three
-continents, so distance is a variable the results actually cover rather than an
-assumption.
+A person plays P1 through SDL2. A headless EC2 instance plays P2 through a
+scripted state machine. The peers exchange **only inputs**, over UDP
+authenticated with HMAC-SHA256, while Prometheus, Grafana, JSONL logs and an
+HTML report record every prediction, correction and disagreement.
+
+New to any of this? [00 - Glossary](docs/00-glossary.md) explains every term
+from scratch, and [17 - How emulation works](docs/17-emulation.md) explains what
+it means to run a 1998 arcade board in software.
 
 ![A rollback session, delay20 profile](docs/media/rollback-delay20.gif)
 
@@ -32,7 +48,7 @@ São Paulo and Tokyo, over the public internet.
 |---|---|---|
 | Snapshot size | 204 bytes | 415 155 bytes |
 | CPU, 300 s session | ~2 s | ~116 s |
-| Prediction accuracy | 92.7–95.5% | 91.5–92.7% |
+| Prediction accuracy | 92.7-95.5% | 91.5-92.7% |
 | Desyncs | 0 | 0 |
 
 **2 997 checksum comparisons agreed, across three continents and zero desyncs.**
@@ -48,34 +64,40 @@ What distance does, at a glance:
 | São Paulo | 272 ms | 8 (the limit) | 827 | 57.37 |
 | Tokyo | 267 ms | 8 (the limit) | 1 283 | 56.01 |
 
-The default 8-frame prediction window is 133 ms at 60 Hz — exactly one way at
+The default 8-frame prediction window is 133 ms at 60 Hz - exactly one way at
 267 ms. Beyond that the session stops speculating and waits, which is the design
 working correctly and also the point at which it needs retuning. What that
 retuning costs, and who pays for it, is measured in
-[08 — Experiments](docs/08-experiments.md) along with all five synthetic
+[08 - Experiments](docs/08-experiments.md) along with all five synthetic
 profiles.
 
 ## Documentation
 
 | Document | Subject |
 |---|---|
-| [00 — Glossary](docs/00-glossary.md) | Start here. Every technical term from scratch |
-| [01 — Theory](docs/01-theory.md) | What rollback is, why it exists, what it costs |
-| [02 — Architecture](docs/02-architecture.md) | The crates, and why the boundary sits where it does |
-| [03 — Protocol](docs/03-protocol.md) | Datagram format, authentication, handshake |
-| [04 — Running locally](docs/04-running-locally.md) | Controls, commands, a session end to end |
-| [05 — Determinism](docs/05-determinism.md) | The rules that prevent desync, and how they were checked |
-| [06 — AWS](docs/06-aws.md) | The infrastructure, the threat model, the session key |
-| [07 — Dashboard](docs/07-dashboard.md) | Prometheus, Grafana, what each panel means |
-| [08 — Experiments](docs/08-experiments.md) | Five profiles, the method, the results |
-| [09 — The Last Blade 2](docs/09-the-last-blade-2.md) | The FBNeo core, the boot script, the pinned commit |
-| [10 — Costs](docs/10-costs.md) | What a session costs, and where money disappears |
-| [11 — Cleanup](docs/11-cleanup.md) | How to destroy everything and confirm it went |
-| [12 — Troubleshooting](docs/12-troubleshooting.md) | Symptoms, causes, what to look at first |
-| [13 — Coverage](docs/13-coverage.md) | What was validated, what was not |
-| [14 — Video](docs/14-video.md) | Recording sessions, and watching rollback happen |
-| [15 — Elastic](docs/15-elastic.md) | Per-event analysis: what `summary.csv` cannot answer |
-| [16 — The algorithm](docs/16-algorithm.md) | Data structures, invariants, code paths, complexity |
+| [00 - Glossary](docs/00-glossary.md) | Start here. Every technical term from scratch |
+| [01 - Theory](docs/01-theory.md) | What rollback is, why it exists, what it costs |
+| [02 - Architecture](docs/02-architecture.md) | The crates, and why the boundary sits where it does |
+| [03 - Protocol](docs/03-protocol.md) | Datagram format, authentication, handshake |
+| [04 - Running locally](docs/04-running-locally.md) | Controls, commands, a session end to end |
+| [05 - Determinism](docs/05-determinism.md) | The rules that prevent desync, and how they were checked |
+| [06 - AWS](docs/06-aws.md) | The infrastructure, the threat model, the session key |
+| [07 - Dashboard](docs/07-dashboard.md) | Prometheus, Grafana, what each panel means |
+| [08 - Experiments](docs/08-experiments.md) | Five profiles, the method, the results |
+| [09 - The Last Blade 2](docs/09-the-last-blade-2.md) | The FBNeo core, the boot script, the pinned commit |
+| [10 - Costs](docs/10-costs.md) | What a session costs, and where money disappears |
+| [11 - Cleanup](docs/11-cleanup.md) | How to destroy everything and confirm it went |
+| [12 - Troubleshooting](docs/12-troubleshooting.md) | Symptoms, causes, what to look at first |
+| [13 - Coverage](docs/13-coverage.md) | What was validated, what was not |
+| [14 - Video](docs/14-video.md) | Recording sessions, and watching rollback happen |
+| [15 - Elastic](docs/15-elastic.md) | Per-event analysis: what `summary.csv` cannot answer |
+| [16 - The algorithm](docs/16-algorithm.md) | Data structures, invariants, code paths, complexity |
+| [17 - How emulation works](docs/17-emulation.md) | What it means to run a 1998 arcade board in software |
+| [18 - Dashboards and queries](docs/18-dashboards.md) | Kibana panels, ES\|QL, and the published dataset |
+
+**The dataset is published.** Every session log is in
+[`dataset/`](dataset/README.md), 5 MB compressed, so the analysis can be checked
+or taken somewhere else without running a session or spending anything on AWS.
 
 Diagrams: [system topology and crate graph](docs/02-architecture.md#the-system-end-to-end),
 [a rollback on a timeline](docs/16-algorithm.md#one-correction-on-a-timeline),
@@ -96,10 +118,10 @@ listed with the rest rather than buried.
 | Six message types, 8-input redundancy, sequence + ACK | done | [03](docs/03-protocol.md) |
 | Handshake validates version, commit, config, seed, hashes | done | [03](docs/03-protocol.md) |
 | Integer-only 2D arena + FSM bot | done | [02](docs/02-architecture.md) |
-| SDL2 client, overlay, keyboard and gamepad | built, **never played by a person** | [13](docs/13-coverage.md) |
+| SDL2 client, overlay, keyboard and gamepad | done, **played end to end** | [18](docs/18-dashboards.md#5-human-against-bot) |
 | FBNeo core in a reproducible container | done, **different commit** | [09](docs/09-the-last-blade-2.md) |
 | Emulated game via `retro_serialize`, scripted boot, no ROM offsets | done | [09](docs/09-the-last-blade-2.md) |
-| **Street Fighter Alpha 3** | **not run** — romset lacks `sfa3.key` | [09](docs/09-the-last-blade-2.md) |
+| **Street Fighter Alpha 3** | **not run** - romset lacks `sfa3.key` | [09](docs/09-the-last-blade-2.md) |
 | Prometheus, Grafana, JSONL, all listed metrics | done | [07](docs/07-dashboard.md) |
 | Five profiles, 180 s, `summary.csv` + self-contained HTML | done | [08](docs/08-experiments.md) |
 | Terraform VPC, SSM, S3, IMDSv2, 4 h terminate, no SSH | done | [06](docs/06-aws.md) |
@@ -127,9 +149,15 @@ per-event Elasticsearch analysis ([15](docs/15-elastic.md)), an algorithm
 reference ([16](docs/16-algorithm.md)), and runs against three regions rather
 than one.
 
-The one acceptance criterion genuinely unmet is **a human on P1**. Every session
-so far has been bot against bot, which leaves the question rollback exists to
-answer — what does it feel like to play? — measured by nothing here.
+Every acceptance criterion that was reachable has been met, including the last
+one to fall: **a human on P1**, playing The Last Blade 2 against the scripted
+bot in Frankfurt over the real internet. That session produced the most
+surprising number in the project, and it contradicted an assumption written into
+these docs. See [18 - Dashboards](docs/18-dashboards.md#5-human-against-bot).
+
+What still has no measurement is **perception**. The lab can say a correction
+was 8 frames deep; it cannot say whether that was noticeable. That is the one
+question rollback exists to answer and the one this repository does not.
 
 ## Quick start
 
@@ -201,7 +229,7 @@ just play lastblade2 /path/lastbld2.zip
 its emulated calendar clock from the host clock, so two peers that start in
 different wall-clock seconds diverge before the first input. `just build-core`
 patches that; the measurement and the fix are in
-[05 — Determinism](docs/05-determinism.md).
+[05 - Determinism](docs/05-determinism.md).
 
 ## What this repository does not contain
 
@@ -225,7 +253,7 @@ The Last Blade 2 took its place. It exercises the same core, the same libretro
 host, the same `LibretroSimulation` and the same rollback engine, so the thing
 being demonstrated is unchanged. The full diagnosis, down to the FBNeo source
 that makes the key mandatory, is in
-[09 — The Last Blade 2](docs/09-the-last-blade-2.md).
+[09 - The Last Blade 2](docs/09-the-last-blade-2.md).
 
 Nothing in the measured results depends on SFA3, and nothing claims it ran.
 

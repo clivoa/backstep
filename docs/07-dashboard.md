@@ -1,7 +1,7 @@
-# 07 — Dashboard
+# 07 - Dashboard
 
 > What each metric means and how to read it is in
-> [00 — Glossary: metrics](00-glossary.md#the-metrics-this-lab-reports).
+> [00 - Glossary: metrics](00-glossary.md#the-metrics-this-lab-reports).
 
 ## Bringing it up
 
@@ -18,10 +18,10 @@ Prometheus scrapes both, labelled `instance="local"` and
 `instance="local-peer2"`.
 
 Everything listens on loopback. That is deliberate, and the reasoning is in
-[06 — AWS](06-aws.md).
+[06 - AWS](06-aws.md).
 
 For picking a single session apart after the fact rather than watching one live,
-see [15 — Elastic](15-elastic.md). Different tool, different question.
+see [15 - Elastic](15-elastic.md). Different tool, different question.
 
 ## How the remote peer shows up
 
@@ -46,7 +46,7 @@ scraping the instance.
 | **Desync** | 0 = fine. 1 = two confirmed-frame checksums disagreed and the session ended. There is no middle state. |
 | **Prediction depth** | How many frames ahead of the peer we are speculating. The limit is 8. Touching it means a stall. |
 | **Prediction accuracy** | Fraction of guesses that held. Below ~0.85 under moderate latency means the opponent is moving a lot, or the link got worse. |
-| **Smoothed RTT** | RFC 6298 SRTT. There is no one-way latency here — see [03](03-protocol.md). |
+| **Smoothed RTT** | RFC 6298 SRTT. There is no one-way latency here - see [03](03-protocol.md). |
 | **State size** | 204 bytes in the arena; 415 155 in The Last Blade 2. |
 
 ### Rollback
@@ -80,7 +80,7 @@ of the budget before any rollback happens at all.
 
 ## Visual signatures
 
-**A healthy session under `delay20`:** prediction depth steady at 2–3, accuracy
+**A healthy session under `delay20`:** prediction depth steady at 2-3, accuracy
 above 0.9, rollbacks constant but shallow, stalls at zero, loss at zero.
 
 **`loss2` behaving as designed:** inferred loss hovering near 2%, and rollbacks

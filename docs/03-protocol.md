@@ -1,7 +1,7 @@
-# 03 — Protocol
+# 03 - Protocol
 
 > Network terms (*datagram*, *RTT*, *SRTT*, *jitter*, *reordering*, *HMAC*) are
-> explained in [00 — Glossary](00-glossary.md).
+> explained in [00 - Glossary](00-glossary.md).
 
 ## The principle
 

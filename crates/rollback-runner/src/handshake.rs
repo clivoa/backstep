@@ -78,7 +78,22 @@ pub fn handshake(
                         Some(reason) => {
                             transport.send(Message::Disconnect(DisconnectReason::Incompatible))?;
                             transport.flush()?;
-                            return Err(HandshakeError::Rejected(reason.reason()));
+                            // Keep waiting rather than exiting. The host is
+                            // usually the EC2 peer, and killing it over one
+                            // malformed invitation means the operator fixes
+                            // their flag only to find nothing is listening --
+                            // the instance is still up, still billing, and the
+                            // next attempt hangs until it times out with no
+                            // hint that the peer died three seconds after the
+                            // first mistake. Observed exactly that way.
+                            eprintln!(
+                                "refused a peer: {}. Still waiting.\n  \
+                                 local: {}",
+                                reason.reason(),
+                                describe_identity(&local)
+                            );
+                            eprintln!("  remote: {}", describe_identity(&remote));
+                            continue;
                         }
                         None => return Ok(remote),
                     }
@@ -124,6 +139,31 @@ pub fn describe(local: &PeerIdentity, remote: &PeerIdentity) -> String {
         local.player,
         remote.player,
     )
+}
+
+/// One peer's side of the comparison, for diagnosing a refusal.
+///
+/// The config hash collapses simulation, seed, tick rate, input delay,
+/// prediction limit and state history into one `u64`, so a mismatch cannot say
+/// *which* field differs. Printing both sides lets a human diff them in the
+/// two places the message lands: the client's terminal and the remote peer's
+/// journal. Seed is called out separately because it is the field most likely
+/// to differ -- it is the one the launcher scripts set and the CLI defaults do
+/// not agree on.
+pub fn describe_identity(id: &PeerIdentity) -> String {
+    format!(
+        "protocol v{} sim {:?} player {:?} seed {:#018x} config {:#018x} commit {}",
+        id.protocol_version,
+        id.simulation,
+        id.player,
+        id.seed,
+        id.config_hash,
+        hex8(&id.app_commit),
+    )
+}
+
+fn hex8(bytes: &[u8]) -> String {
+    bytes.iter().take(4).map(|b| format!("{b:02x}")).collect()
 }
 
 /// The rejection an identity would produce against itself, for tests and for
@@ -194,20 +234,29 @@ mod tests {
     }
 
     #[test]
-    fn a_seed_mismatch_is_refused_by_both_sides_with_a_reason() {
+    fn a_seed_mismatch_tells_the_client_why_and_leaves_the_host_listening() {
         let mut host_identity = identity(PlayerHandle::P2);
         host_identity.seed = 0x9999;
         let (client, host) = run(identity(PlayerHandle::P1), host_identity);
 
+        // The client must learn the reason, not merely that it failed. The
+        // seed is the field most likely to differ, because the launcher
+        // scripts set it and the CLI defaults do not agree with them.
         let client_err = client.unwrap_err();
         assert!(
             matches!(client_err, HandshakeError::Refused(r) if r.contains("seed")),
             "client got {client_err:?}"
         );
+
+        // The host keeps waiting instead of exiting, so it times out rather
+        // than reporting the rejection. This used to be `Rejected`, and the
+        // consequence was that one wrong flag killed the remote peer: the
+        // operator would fix the flag, retry, and find nothing listening on an
+        // instance that was still up and still billing.
         let host_err = host.unwrap_err();
         assert!(
-            matches!(host_err, HandshakeError::Rejected(r) if r.contains("seed")),
-            "host got {host_err:?}"
+            matches!(host_err, HandshakeError::Timeout(_)),
+            "a refused peer must not take the host down; got {host_err:?}"
         );
     }
 

@@ -165,6 +165,20 @@ elastic-reload logs="artifacts/logs":
     @python3 ops/scripts/elastic-load.py --logs "{{logs}}" --reset
 
 # The analyses a single-row summary cannot do: depth distribution, latency
+# Build the six Kibana dashboards. Verifies every panel query first.
+elastic-dashboards *args:
+    ops/scripts/elastic-dashboards.py {{args}}
+
+# Run the ES|QL queries in ops/elastic/queries.esql.
+elastic-query *args:
+    ops/scripts/elastic-esql.py {{args}}
+
+# Unpack the published dataset into artifacts/, rebuilding the analysis without
+# running a single session or spending anything on AWS.
+dataset:
+    tar xf dataset/rollback-sessions.tar.zst -C artifacts/
+    @echo "==> unpacked. Now: just elastic-up && just elastic-load"
+
 # tail, whether rollbacks cluster, where the frame budget goes.
 elastic-analyze session="":
     @python3 ops/scripts/elastic-analyze.py {{ if session == "" { "" } else { "--session " + session } }}
@@ -205,22 +219,47 @@ aws-plan:
 # --- playing ---------------------------------------------------------------
 
 # Human on P1 against the remote peer. `peer` defaults to the Terraform output.
-play sim="arena" rom="" profile="natural" peer="":
+play sim="arena" rom="" profile="" peer="":
     #!/usr/bin/env bash
     set -euo pipefail
+    # Every field below is hashed into the handshake, and one mismatch is a
+    # refused session rather than a warning. aws-up writes what the remote peer
+    # was actually started with; read it rather than assuming the defaults
+    # agree. They did not, and 'just aws-up' + 'just play' failed for it.
+    env_file="{{root}}/artifacts/session.env"
+    if [[ -f "$env_file" ]]; then
+        # shellcheck disable=SC1090
+        . "$env_file"
+    fi
     peer="{{peer}}"
     if [[ -z "$peer" ]]; then
-        peer="$(terraform -chdir=terraform output -raw peer_address)"
+        peer="${ROLLBACK_PEER:-$(terraform -chdir=terraform output -raw peer_address)}"
     fi
-    args=(--sim {{sim}} --peer "$peer" --profile {{profile}} --log-dir "{{logs}}")
+    profile="{{profile}}"
+    if [[ -z "$profile" ]]; then
+        profile="${ROLLBACK_PROFILE:-natural}"
+    fi
+    args=(--sim {{sim}} --peer "$peer" --profile "$profile" --log-dir "{{logs}}")
+    args+=(--mode "${ROLLBACK_MODE:-play}")
+    for pair in "seed:${ROLLBACK_SEED:-}" \
+                "input-delay:${ROLLBACK_INPUT_DELAY:-}" \
+                "prediction-limit:${ROLLBACK_PREDICTION_LIMIT:-}" \
+                "state-history:${ROLLBACK_STATE_HISTORY:-}"; do
+        flag="${pair%%:*}"; value="${pair#*:}"
+        [[ -n "$value" ]] && args+=("--${flag}" "$value")
+    done
     if [[ "{{sim}}" != "arena" ]]; then
         if [[ -z "{{rom}}" ]]; then
             echo "sim={{sim}} needs rom=/path/to/game.zip" >&2
             exit 2
         fi
-        args+=(--core "{{core}}" --rom "{{rom}}")
+        args+=(--core "{{core}}" --rom "{{rom}}" --system-dir "{{root}}/artifacts/system")
+        # FBNeo writes NVRAM here, and stale NVRAM changes how long the machine
+        # takes to boot -- which desynchronises the boot script from the peer.
+        rm -rf "{{root}}/artifacts/system/fbneo"
     fi
     export ROLLBACK_SESSION_KEY_FILE="${ROLLBACK_SESSION_KEY_FILE:-{{key_file}}}"
+    echo "==> ${args[*]}"
     cargo run --release -p rollback-client -- "${args[@]}"
 
 # Bot against bot, 180 s on every profile, repeatable from the seed.

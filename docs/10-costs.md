@@ -1,4 +1,4 @@
-# 10 — Costs
+# 10 - Costs
 
 `eu-central-1` (Frankfurt) on-demand prices in USD, as an order-of-magnitude
 reference. Check AWS's current table before planning anything. Prices move and
@@ -19,8 +19,8 @@ this file does not.
 
 **About US$ 0.11 for a four-hour session.**
 
-The measured runs came in well under that: the two Madrid–Frankfurt sessions in
-[08 — Experiments](08-experiments.md), including bring-up and teardown, cost
+The measured runs came in well under that: the two Madrid-Frankfurt sessions in
+[08 - Experiments](08-experiments.md), including bring-up and teardown, cost
 under **US$ 0.05** between them.
 
 Egress deserves a note, because it runs against intuition. A 180-second session
@@ -58,7 +58,7 @@ An EIP **attached to a running instance** is free. An allocated, idle one costs
 about US$ 3.60/month.
 
 That matters if a `terraform destroy` fails partway: the instance can go and the
-EIP remain. Which is why [11 — Cleanup](11-cleanup.md) checks for EIPs
+EIP remain. Which is why [11 - Cleanup](11-cleanup.md) checks for EIPs
 explicitly.
 
 ### Orphaned volumes
@@ -107,7 +107,7 @@ the emulated game, measure first: the bottleneck is `retro_serialize`, which is
 dominated by memory bandwidth rather than vCPU count, so doubling the instance
 type may buy less than it looks like it should.
 
-The measured breakdown is in [15 — Elastic](15-elastic.md): `save_state` alone
+The measured breakdown is in [15 - Elastic](15-elastic.md): `save_state` alone
 is 2 271 µs of a 16 667 µs frame. Look at
 `rollback_save_state_seconds_total` before changing anything.
 

@@ -1,4 +1,4 @@
-# 12 — Troubleshooting
+# 12 - Troubleshooting
 
 ## The handshake times out
 
@@ -71,7 +71,7 @@ Error: session ended in a confirmed desync
 ```
 
 The two simulations diverged. Full diagnosis in
-[05 — Determinism](05-determinism.md); in short:
+[05 - Determinism](05-determinism.md); in short:
 
 ```bash
 # which frame, and the two checksums
@@ -96,7 +96,7 @@ curl -s http://127.0.0.1:9898/metrics | grep -E "advance_seconds|save_state_seco
 
 On the EC2 instance with The Last Blade 2, the usual cause is `retro_serialize`
 on a `t3.small`. Switch to `t3.medium` in `terraform.tfvars` and run
-`just aws-up` again. The measured split is in [15 — Elastic](15-elastic.md):
+`just aws-up` again. The measured split is in [15 - Elastic](15-elastic.md):
 `advance` around 3 948 µs and `save_state` around 2 271 µs per frame.
 
 Locally, check you are not running a debug build. The `justfile` uses release,
@@ -112,7 +112,7 @@ http://127.0.0.1:9898/metrics  down
   the normal state between runs.
 - **The stack is not on host networking.** The `docker-compose` uses
   `network_mode: host` on purpose, to reach a loopback exporter. On a bridge
-  network it cannot; see [06 — AWS](06-aws.md) for why the exporter is not bound
+  network it cannot; see [06 - AWS](06-aws.md) for why the exporter is not bound
   to `0.0.0.0`.
 - **Not Linux.** Docker host networking is Linux-only.
 
@@ -169,7 +169,7 @@ tests produced when they found the stall-condition bug.
 - `UnauthorizedOperation`: missing IAM permission. The lab needs EC2, VPC, S3,
   IAM and SSM.
 - `AddressLimitExceeded`: Elastic IP limit in the region. Probably orphaned EIPs
-  from an earlier run; see [11 — Cleanup](11-cleanup.md).
+  from an earlier run; see [11 - Cleanup](11-cleanup.md).
 - `Invalid rule description`: an apostrophe or another character AWS rejects in a
   security group description. `terraform validate` accepts it; only the API
   refuses.
@@ -179,7 +179,7 @@ tests produced when they found the stall-condition bug.
 
 `aws-up` fails loudly now, and the message says the infrastructure is up and
 costing money. The three failures seen in practice, all documented in
-[06 — AWS](06-aws.md):
+[06 - AWS](06-aws.md):
 
 - `Illegal option -o pipefail` or `source: not found`: SSM runs `/bin/sh`, which
   is dash on Ubuntu.
@@ -269,7 +269,7 @@ grep patches cores/fbneo-commit.txt     # expected: patches=kNetGame=1
 ```
 
 Background in `docker/fbneo/determinism.md` and
-[05 — Determinism](05-determinism.md).
+[05 - Determinism](05-determinism.md).
 
 Other early-desync causes, in order of frequency:
 
@@ -318,6 +318,77 @@ No `.jsonl` in the directory. Run `just bench` or `just collect` first.
 If there are files but they show as incomplete, the session died before writing
 `session_end`. The report still uses what arrived and marks `complete=false`;
 look at the end of the file for the last recorded state.
+
+## The handshake fails, or nothing appears on screen
+
+Three defects sat here undiscovered for the whole project, because every session
+until the first human one was launched by a single script that got all three
+right by accident. They are worth listing together, because they compound: each
+one makes the next harder to see.
+
+### "peer refused the session: session configuration mismatch"
+
+The handshake hashes **simulation, seed, tick rate, input delay, prediction
+limit and state history** into one number and refuses the session if a single
+field differs. The message names the category, not the field, because the hash
+cannot say which one moved.
+
+Both peers now print their own identity when refused, so the two lines can be
+diffed:
+
+```
+  this peer: protocol v1 sim LastBlade2 player P1 seed 0x0000000000001092 config 0x45f2… commit 44141777
+```
+
+The usual culprit is **seed**. `aws-up` defaults to 4242; the client's built-in
+default is `0x123456789ABCDEF0`. Before this was fixed, `just aws-up` followed
+by `just play` - the documented path - always failed this way.
+
+`just play` now reads `artifacts/session.env`, which `aws-up` writes with
+exactly what the remote peer was started with, so the two agree by construction
+rather than by both hard-coding the same numbers.
+
+### The client hangs, then times out, and the peer is gone
+
+The remote peer used to wait **120 seconds** for a handshake and then exit. That
+is right for `bench`, where a script starts both peers seconds apart, and wrong
+for a person, who has to read the output and sit down.
+
+The failure is nasty because the instance stays up. It answers SSM, it bills,
+and `systemctl is-active` reports `active` right up until it does not, so a
+check a minute earlier tells you nothing. From the client it looks like a
+handshake that hangs for no reason.
+
+`aws-up` now passes `--handshake-timeout 900`. To confirm what a running peer
+actually has, read the process rather than the log line:
+
+```bash
+aws ssm send-command --instance-ids i-… --document-name AWS-RunShellScript \
+  --parameters 'commands=["ps -eo args | grep [r]ollback-bot"]'
+```
+
+### One bad connection attempt killed the host
+
+A refused handshake used to end the host's process too, so a single wrong flag
+cost a full redeploy: the operator fixes the flag, retries, and finds nothing
+listening. The host now logs the refusal, prints both identities, and keeps
+waiting.
+
+### The game window never appears
+
+The client opens its SDL window **after** the handshake succeeds, so a failing
+handshake shows nothing at all on screen. Watch the terminal: the window follows
+the `connected:` line and nothing before it.
+
+If `connected:` did print and there is still no window, it opened on another
+workspace. Under Hyprland:
+
+```bash
+hyprctl clients -j | jq -r '.[] | "\(.class)  \(.title)  ws=\(.workspace.name)"'
+```
+
+The window is titled `rollback-netcode :: <simulation> :: <profile>`. Click it
+before playing: SDL only receives the keyboard when the window has focus.
 
 ## Asking for help usefully
 

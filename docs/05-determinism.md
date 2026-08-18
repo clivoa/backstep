@@ -1,7 +1,7 @@
-# 05 — Determinism
+# 05 - Determinism
 
 > *Fixed point*, *ULP*, *ASLR*, *savestate*, *NVRAM*: defined in
-> [00 — Glossary](00-glossary.md).
+> [00 - Glossary](00-glossary.md).
 
 ## The rule
 
@@ -82,7 +82,7 @@ overflow into a loud failure rather than quietly wrong state.
 
 ### 7. `OutputMode` does not touch state
 
-Detailed in [02 — Architecture](02-architecture.md). Video, audio and
+Detailed in [02 - Architecture](02-architecture.md). Video, audio and
 presentation counters stay **outside** the snapshot and **outside** the
 checksum. `presented_frames` exists on `Arena` but is neither serialised nor
 hashed, because it counts *screen* frames, which legitimately differ between
@@ -312,10 +312,10 @@ finding which of the rules above was broken.
 The one check none of the above performs. Two processes of one binary on one CPU
 would agree even if every rule in this document were wrong.
 
-Closed by the Madrid–Frankfurt session: 449 agreeing checksum comparisons
+Closed by the Madrid-Frankfurt session: 449 agreeing checksum comparisons
 between an Intel i7-10750H running Arch and an EC2 `t3.small` running Ubuntu
 24.04, in both the arena and the emulated game, with no desyncs.
-See [13 — Coverage](13-coverage.md).
+See [13 - Coverage](13-coverage.md).
 
 ## Diagnosing a desync
 
