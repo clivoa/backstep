@@ -1,5 +1,51 @@
 # 02 — Architecture
 
+## The system, end to end
+
+Two machines, one UDP link, and nothing crossing it but inputs. Everything else
+— video, audio, positions, health — is recomputed independently on each side
+from the same inputs, which is the entire premise the lab rests on.
+
+```mermaid
+flowchart LR
+    subgraph MADRID["Madrid — desktop, Arch Linux"]
+        HUMAN([keyboard / gamepad]) --> CLIENT["<b>rollback-client</b><br/>SDL2, overlay"]
+        CLIENT --> SESS1["<b>RollbackSession</b><br/>predict · save · re-simulate"]
+        SESS1 --> SIM1["Simulation<br/>arena · FBNeo core"]
+        SESS1 --> TEL1["rollback-telemetry<br/>127.0.0.1:9898"]
+        TEL1 --> PROM["Prometheus + Grafana<br/>localhost only"]
+        TEL1 --> JSONL[("JSONL log")]
+    end
+
+    subgraph AWS["AWS EC2 t3.small — Frankfurt · São Paulo · Tokyo"]
+        SESS2["<b>RollbackSession</b><br/>the same code"] --> SIM2["Simulation<br/>identical build"]
+        BOT["<b>rollback-bot</b><br/>scripted FSM on P2"] --> SESS2
+        SESS2 --> TEL2["rollback-telemetry"]
+        TEL2 --> JSONL2[("JSONL log")]
+        JSONL2 --> S3[("S3, synced<br/>every minute")]
+    end
+
+    SESS1 <== "UDP/7000 · HMAC-SHA256<br/><b>inputs only</b>" ==> SESS2
+    TEL2 -. "TelemetrySummary,<br/>over the session's own link" .-> TEL1
+    S3 -. "just collect" .-> JSONL
+    JSONL --> REPORT["rollback-report<br/>summary.csv · report.html"]
+```
+
+Three things in that picture are load-bearing:
+
+**`RollbackSession` is the same code on both sides.** Not a client version and a
+server version — there is no server. Both peers are equal, and both simulate the
+whole game.
+
+**The remote peer's metrics travel over the game link**, as `TelemetrySummary`,
+and are re-exported locally with `peer="remote"`. There is no metrics port open
+on any public interface, which is why the lab's attack surface is one UDP port
+and nothing else ([06](06-aws.md)).
+
+**Logs leave the instance before the instance does.** A systemd timer syncs to
+S3 every minute and again on shutdown, because the instance is destroyed at the
+end of every session and takes everything on it along.
+
 ## The crates
 
 ```
@@ -19,6 +65,35 @@ fake-libretro-core     a real libretro cdylib, so CI can test the FFI with no RO
 Dependencies only ever point downwards. `rollback-core` knows nothing about
 networks, nothing about libretro, nothing about telemetry. It knows the
 `Simulation` trait and stops there.
+
+```mermaid
+flowchart TD
+    CORE["<b>rollback-core</b><br/>Simulation trait · RollbackSession<br/><i>no network, no I/O, no game</i>"]
+
+    NET["rollback-net<br/>wire · HMAC · emulator"]
+    ARENA["rollback-arena<br/>2D sim + bot"]
+    LIBRETRO["rollback-libretro<br/>libretro FFI · boot scripts"]
+    TELEM["rollback-telemetry<br/>exporter · JSONL"]
+    RUNNER["<b>rollback-runner</b><br/>handshake · frame loop · recording"]
+    CLIENT["rollback-client<br/>SDL2, human P1"]
+    BOT["rollback-bot<br/>headless, P2 on EC2"]
+    REPORT["rollback-report"]
+    FAKE["fake-libretro-core<br/><i>cdylib for CI</i>"]
+
+    CORE --> NET & ARENA & LIBRETRO & TELEM
+    NET & ARENA & LIBRETRO & TELEM --> RUNNER
+    RUNNER --> CLIENT & BOT
+    TELEM -.-> REPORT
+    FAKE -.->|"loaded by tests"| LIBRETRO
+
+    classDef engine fill:#2d3748,stroke:#63b3ed,stroke-width:2px,color:#fff
+    class CORE,RUNNER engine
+```
+
+The two crates that implement `Simulation` — `rollback-arena` and
+`rollback-libretro` — are siblings, and neither knows the other exists. Swapping
+a 204-byte arena for a 415 KB arcade emulator changes which sibling the runner
+was handed and nothing else.
 
 ## The boundary that matters
 

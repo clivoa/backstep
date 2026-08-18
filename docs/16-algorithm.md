@@ -78,6 +78,55 @@ Note the `min` in `confirmed_frame`. Inputs can arrive for frames not yet
 simulated, and a confirmed frame you have not simulated is not a frame you can
 report as done.
 
+## One correction, on a timeline
+
+The whole algorithm in a single exchange. P1 guesses frames 10–13, learns at
+frame 14 that its guess for 11 was wrong, and repairs the past inside one
+display frame.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P1 as P1 (Madrid)
+    participant NET as UDP
+    participant P2 as P2 (EC2)
+
+    Note over P1: frame 10 — no input from P2 yet
+    P1->>P1: predict_remote() = P2's last confirmed input
+    P1->>P1: save_state(10), checksum(10)
+    P1->>P1: advance_frame([p1, guess], Present)
+    Note over P1: frames 11, 12, 13 — same, still guessing<br/>prediction_depth grows to 4
+
+    P2-)NET: InputBatch { start: 11, inputs, ack }
+    NET-)P1: arrives during frame 14
+
+    P1->>P1: add_remote_inputs → frontier moves to 13
+    P1->>P1: reconcile() — used_remote[11] ≠ actual[11]
+
+    rect rgba(200,80,80,0.18)
+        Note over P1: ROLLBACK, depth 3 — invisible to the player
+        P1->>P1: load_state(11)
+        P1->>P1: drop snapshots ≥ 11 (built on a false guess)
+        P1->>P1: advance_frame(11, Resimulate) — video and audio discarded
+        P1->>P1: advance_frame(12, Resimulate)
+        P1->>P1: advance_frame(13, Resimulate)
+    end
+
+    P1->>P1: frame 14 advances normally, Present
+    P1-)NET: Checksum { frame: 13, value }
+    NET-)P2: compared once frame 13 is final on both sides
+```
+
+Two details the diagram makes concrete that prose tends to blur:
+
+**The rollback and the three re-simulations all happen inside frame 14.** They
+are not spread across later frames. That is why `prediction_limit` exists: eight
+re-simulations plus a normal frame must still fit in 16.7 ms.
+
+**`Resimulate` throws away video and audio, never state.** Without that the
+player would see frames 11–13 flash past and hear a burst of audio. With it,
+the correction is silent.
+
 ## The frame lifecycle
 
 Every frame passes through four stages. Only the first is guaranteed to happen

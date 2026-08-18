@@ -18,6 +18,43 @@ S3 bucket        private, AES256, 7-day lifecycle, force_destroy
 SSM SecureString /rollback-netcode/session-key
 ```
 
+And how the traffic actually moves. Note that only one arrow points *inward*:
+
+```mermaid
+flowchart LR
+    OP(["operator<br/>Madrid, one /32"])
+
+    subgraph AWSR["AWS region"]
+        SSM["SSM Session Manager<br/><i>agent dials out</i>"]
+        PARAM[["SSM SecureString<br/>/rollback-netcode/session-key"]]
+        S3[("S3 bucket<br/>private · AES256<br/>7-day lifecycle")]
+
+        subgraph VPC["VPC 10.42.0.0/16"]
+            IGW{{"Internet Gateway"}}
+            subgraph SUB["public subnet 10.42.1.0/24"]
+                SG["security group<br/><b>UDP/7000 from one /32</b><br/>no port 22, no 9898"]
+                EC2["EC2 t3.small · Ubuntu 24.04<br/>IMDSv2 required<br/>gp3 20 GB, encrypted<br/>shutdown -h +4h → terminate"]
+                SG --- EC2
+            end
+            IGW --- SUB
+        end
+    end
+
+    OP == "game traffic<br/>UDP/7000, HMAC" ==> IGW
+    OP -. "admin: aws ssm start-session<br/><b>no inbound rule</b>" .-> SSM
+    SSM -.-> EC2
+    EC2 -- "reads at ExecStartPre" --> PARAM
+    EC2 -- "logs + video,<br/>every minute and on stop" --> S3
+    S3 -. "just collect" .-> OP
+
+    classDef danger fill:#4a2020,stroke:#e53e3e,color:#fff
+    class SG danger
+```
+
+The dotted lines are the ones that need no open port. Administration goes
+through SSM, whose agent dials out, so there is no SSH, no bastion, and no rule
+for port 22 to forget to remove.
+
 ## Threat model
 
 The entire attack surface is **one UDP port, from one IP address**.

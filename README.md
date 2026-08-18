@@ -77,6 +77,60 @@ profiles.
 | [15 — Elastic](docs/15-elastic.md) | Per-event analysis: what `summary.csv` cannot answer |
 | [16 — The algorithm](docs/16-algorithm.md) | Data structures, invariants, code paths, complexity |
 
+Diagrams: [system topology and crate graph](docs/02-architecture.md#the-system-end-to-end),
+[a rollback on a timeline](docs/16-algorithm.md#one-correction-on-a-timeline),
+[AWS network topology](docs/06-aws.md#what-gets-built).
+
+## Against the specification
+
+What the lab set out to do, and what actually happened. The two deviations are
+listed with the rest rather than buried.
+
+| Requirement | Status | Where |
+|---|---|---|
+| Rollback engine: prediction, limit, history, re-simulation | done | [16](docs/16-algorithm.md) |
+| Defaults: 1 input delay, 8 prediction, 16 states, 60 Hz | done | `SessionConfig::default` |
+| Stop on window full; end after 3 s of silence | done | [16](docs/16-algorithm.md#the-stall-condition) |
+| Checksums every 60 confirmed frames; desync ends the session | done | [05](docs/05-determinism.md) |
+| UDP/7000, versioned wire, 1 200-byte limit, HMAC-SHA256 | done | [03](docs/03-protocol.md) |
+| Six message types, 8-input redundancy, sequence + ACK | done | [03](docs/03-protocol.md) |
+| Handshake validates version, commit, config, seed, hashes | done | [03](docs/03-protocol.md) |
+| Integer-only 2D arena + FSM bot | done | [02](docs/02-architecture.md) |
+| SDL2 client, overlay, keyboard and gamepad | built, **never played by a person** | [13](docs/13-coverage.md) |
+| FBNeo core in a reproducible container | done, **different commit** | [09](docs/09-the-last-blade-2.md) |
+| Emulated game via `retro_serialize`, scripted boot, no ROM offsets | done | [09](docs/09-the-last-blade-2.md) |
+| **Street Fighter Alpha 3** | **not run** — romset lacks `sfa3.key` | [09](docs/09-the-last-blade-2.md) |
+| Prometheus, Grafana, JSONL, all listed metrics | done | [07](docs/07-dashboard.md) |
+| Five profiles, 180 s, `summary.csv` + self-contained HTML | done | [08](docs/08-experiments.md) |
+| Terraform VPC, SSM, S3, IMDSv2, 4 h terminate, no SSH | done | [06](docs/06-aws.md) |
+| `just test / local-up / aws-up / play / bench / collect / aws-down` | done | [04](docs/04-running-locally.md) |
+| Unit, property, 100 k replay, golden protocol, fake core, E2E | done | [13](docs/13-coverage.md) |
+| Gates: fmt, clippy, tests, shellcheck, terraform, docs | done | `just test` |
+| AWS smoke: handshake, session, collect, destroy | done, ×6 across three regions | [08](docs/08-experiments.md) |
+| Didactic documentation of every technical term | done | [00](docs/00-glossary.md) |
+
+**Two deviations, both forced and both documented.**
+
+*SFA3 was replaced by The Last Blade 2.* The available romset is missing
+`sfa3.key`, the 20-byte CPS-2 decryption key, and all eleven SFA3 variants in
+FBNeo require one. The substitute exercises the same core, the same libretro
+host and the same rollback engine, so nothing being demonstrated changed.
+
+*The FBNeo commit differs.* The spec pinned
+`finalburnneo/FBNeo@f1c3545f…`, which has no `makefile.libretro`. The build uses
+`libretro/FBNeo@0332bb98…` and records **both** hashes in the artefact's
+provenance, so the deviation is visible from the binary rather than only from
+this table.
+
+Beyond the spec: video recording with burned-in telemetry ([14](docs/14-video.md)),
+per-event Elasticsearch analysis ([15](docs/15-elastic.md)), an algorithm
+reference ([16](docs/16-algorithm.md)), and runs against three regions rather
+than one.
+
+The one acceptance criterion genuinely unmet is **a human on P1**. Every session
+so far has been bot against bot, which leaves the question rollback exists to
+answer — what does it feel like to play? — measured by nothing here.
+
 ## Quick start
 
 ### Prerequisites
