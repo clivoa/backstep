@@ -9,7 +9,8 @@ correction, and where the simulation starts to stall.
 ## Method
 
 Five network profiles, fixed seed (4242), 1 frame of input delay, a prediction
-limit of 8 frames, and a 16-state buffer.
+limit of 8 frames, and a 16-state buffer. A sixth profile was added later, for
+an experiment those five could not reach.
 
 | Profile | Delay | Jitter | Loss | Reordering | Measured RTT |
 |---|---|---|---|---|---|
@@ -18,9 +19,16 @@ limit of 8 frames, and a 16-state buffer.
 | `jitter30` | 30 ms | ±15 ms | — | — | 84–88 ms |
 | `loss2` | — | — | 2% | — | 27 ms |
 | `combined` | 40 ms | ±20 ms | 2% | 0.5% | 97–105 ms |
+| `transcontinental` | 133 ms | ±5 ms | — | — | 267 ms |
+
+`transcontinental` is not one of the five and does not appear in `just bench`.
+It was added afterwards to reproduce the measured Madrid–São Paulo and
+Madrid–Tokyo link on loopback, and it is the only profile whose one-way delay
+exceeds the default prediction window. See
+[the tuning sweep](#fixing-a-link-that-is-too-long-the-tuning-sweep).
 
 What each profile imitates, what it isolates, and what jitter even is:
-[00 — Glossary: the five profiles](00-glossary.md#the-five-network-profiles).
+[00 — Glossary: the network profiles](00-glossary.md#the-network-profiles).
 
 Briefly: `natural` is the control, `delay20` isolates distance, `jitter30`
 isolates the *variation* in latency, `loss2` isolates loss to test the
@@ -306,6 +314,205 @@ just aws-down
 Both sessions together, including bring-up and teardown, cost under US$ 0.05.
 See [10 — Costs](10-costs.md).
 
+## Three continents: where the prediction window runs out
+
+Frankfurt answers "does this work over the internet". It cannot answer "what
+happens when the opponent is far away", because 50 ms is close. So the same two
+simulations ran again from the same desk in Madrid against **São Paulo**
+(`sa-east-1`) and **Tokyo** (`ap-northeast-1`).
+
+Distance is the only variable. Same binaries, same seed, same `natural` profile,
+same 8-frame prediction limit, same 300 s for the game and 150 s for the arena.
+
+```bash
+./ops/scripts/region-run.sh eu-central-1   frankfurt /path/lastbld2.zip
+./ops/scripts/region-run.sh sa-east-1      saopaulo  /path/lastbld2.zip
+./ops/scripts/region-run.sh ap-northeast-1 tokyo     /path/lastbld2.zip
+```
+
+| Region | Sim | Peer | SRTT | FPS | Rollbacks | Max depth | Stalls | Accuracy | Checksums | Desync |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Frankfurt | arena | P1 | 50.2 ms | 60.01 | 5 | 1 | 0 | 95.5% | 149 | no |
+| Frankfurt | arena | P2 | 50.0 ms | 60.01 | 590 | 3 | 0 | 93.4% | 150 | no |
+| Frankfurt | lastblade2 | P1 | 49.8 ms | 60.01 | 919 | 3 | 0 | 92.4% | 300 | no |
+| Frankfurt | lastblade2 | P2 | 50.9 ms | 60.00 | 188 | 2 | 0 | 91.5% | 300 | no |
+| São Paulo | arena | P1 | 267.9 ms | 59.60 | 634 | **8** | 63 | 92.9% | 149 | no |
+| São Paulo | arena | P2 | 266.7 ms | 59.54 | 642 | **8** | 70 | 92.9% | 150 | no |
+| São Paulo | lastblade2 | P1 | 271.6 ms | **57.37** | 1 316 | **8** | 827 | 92.7% | 300 | no |
+| São Paulo | lastblade2 | P2 | 271.1 ms | **57.35** | 1 345 | **8** | 443 | 92.4% | 300 | no |
+| Tokyo | arena | P1 | 268.2 ms | 59.56 | 658 | **8** | 68 | 92.7% | 149 | no |
+| Tokyo | arena | P2 | 266.6 ms | 59.51 | 658 | **8** | 75 | 92.7% | 150 | no |
+| Tokyo | lastblade2 | P1 | 267.3 ms | **56.01** | 1 315 | **8** | 1 283 | 92.7% | 300 | no |
+| Tokyo | lastblade2 | P2 | 266.9 ms | **55.99** | 1 366 | **8** | 437 | 92.2% | 300 | no |
+
+2 697 checksums compared across three continents. Zero desyncs.
+
+Loss was 0.00% everywhere except Tokyo, which lost 0.02% on the arena and 0.03%
+on the game: a handful of datagrams in nine thousand, all covered by the
+eight-input redundancy.
+
+### Madrid to São Paulo and Madrid to Tokyo are the same distance
+
+8 500 km westward and 9 700 km eastward both measured **267 ms**. The two
+regions produced results so close that they read as a repeat of one experiment,
+which is what makes them useful: the same behaviour twice, from opposite
+directions, on unrelated undersea cable.
+
+Latency follows the cable route and the number of hops, not the great-circle
+distance. Madrid has direct fibre to both.
+
+### At 267 ms the window is simply too small
+
+The prediction limit is 8 frames. At 60 Hz that is 133 ms — **exactly one way**
+at this distance. An input cannot make the round trip before the window fills,
+so the session hits the limit on essentially every frame:
+
+- max depth pinned at **8** in all eight long-distance runs, against 1–3 at
+  Frankfurt;
+- stalls appear for the first time: 63–1 283, against **zero** at Frankfurt;
+- effective FPS drops below 60 for the first time anywhere in this project.
+
+This is not a failure. It is the design working as specified: the session
+refuses to speculate further than it can undo, and waits. The player sees a
+brief freeze instead of a desync. But it does mean the default configuration is
+tuned for a continent, not a planet.
+
+### The heavier simulation degrades first
+
+Same link, same distance, two simulations:
+
+| | Arena (204 B) | The Last Blade 2 (415 KB) |
+|---|---|---|
+| FPS, São Paulo | 59.60 | 57.37 |
+| FPS, Tokyo | 59.56 | 56.01 |
+| Stalls, Tokyo P1 | 68 | 1 283 |
+
+The arena holds 59.5 fps and stalls 68 times. The game drops to 56 and stalls
+1 283 times over the same route. The network is identical; what differs is that
+recovering from a stall means re-simulating up to eight frames, and eight frames
+of The Last Blade 2 is eight `retro_serialize` calls over 415 KB.
+
+**Latency and state size compound.** Each is survivable alone: Frankfurt showed
+a large state at short distance is free, and the arena showed long distance with
+a small state costs almost nothing. Together they are the only configuration
+here that misses 60 Hz.
+
+### The asymmetry disappears with distance
+
+At Frankfurt the split is stark: 919 rollbacks against 188 on the game, 590
+against 5 on the arena. At São Paulo and Tokyo the peers land within 4% of each
+other — 1 316 against 1 345, 1 315 against 1 366, 658 against 658.
+
+The asymmetry comes from starting phase: whoever completes the handshake first
+runs slightly ahead and does all the predicting ([above](#how-to-read-the-numbers)).
+That advantage only survives while there is slack in the window. Once both peers
+are saturated, both stall, and stalling is what re-couples their clocks. The
+lead is erased by the same mechanism that limits the damage.
+
+So the asymmetry is a **short-link phenomenon**. On a bad connection the cost is
+shared, whether you want it shared or not.
+
+### Prediction accuracy does not care about any of this
+
+92.2% to 95.5%, across 50 ms and 267 ms, two simulations, three continents.
+
+The one number that has stayed flat through every experiment in this project is
+the one rollback's entire premise rests on. Distance changes how *often* you
+must correct and how *deep* the correction goes. It does not change how often
+the guess was right, because the guess depends on the player's hands, not on the
+network.
+
+## Fixing a link that is too long: the tuning sweep
+
+The three-region runs prove the 8-frame window saturates at 267 ms. They do not
+show how to fix it, and finding out by trial would mean another instance-hour on
+another continent per configuration.
+
+So the measured link was brought home. The `transcontinental` profile is
+133 ms one-way with ±5 ms of jitter, which reproduces the 267 ms round trip and
+the few milliseconds of variance seen from both São Paulo and Tokyo:
+
+```bash
+./ops/scripts/tuning-sweep.sh              # arena, four configurations, 90 s each
+DURATION=180 ./ops/scripts/tuning-sweep.sh
+```
+
+Arena rather than the emulated game, deliberately. Its state is 204 bytes, so
+re-simulation is nearly free and what the numbers show is the **algorithm**
+saturating rather than the CPU running out. The Last Blade 2 suffers both at
+once, which is realistic but confounds the two causes.
+
+Results are given for the peer that runs *ahead* — the one that does the
+predicting, and therefore the one the tuning has to protect:
+
+| Configuration | Input delay | Limit | History | FPS | Stalls | Rollbacks | Max depth | Re-simulation | Accuracy | Input lag |
+|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | 1 | 8 | 16 | 57.16 | 269 | 394 | 8 | 0.55× | 92.7% | 17 ms |
+| wide-window | 1 | 20 | 28 | 60.02 | 0 | 362 | 18 | 1.17× | 93.3% | 17 ms |
+| both | 6 | 16 | 24 | 60.02 | 0 | 365 | 13 | 0.84× | 93.2% | 100 ms |
+| input-delay-8 | 8 | 8 | 16 | 59.99 | 3 | 363 | 8 | 0.50× | 93.3% | 133 ms |
+
+"Re-simulation" is frames the CPU ran that the player never saw, as a multiple of
+the frames they did see. "Input lag" is `input_delay` converted to milliseconds
+at 60 Hz — what the player actually feels.
+
+**The baseline reproduces the cloud result.** 57.16 fps and 269 stalls on
+loopback, against 57.35 and 443 measured from São Paulo. Close enough that the
+profile can stand in for the region.
+
+**Widening the window removes every stall, and the player pays nothing.** FPS
+back to 60.02, stalls to zero, input lag unchanged at 17 ms. It looks free.
+
+It is not free. Depth rises from 8 to 18 and re-simulation rises to **1.17×**:
+the peer now simulates more than twice the frames it displays. On a 204-byte
+arena that is affordable. On a 415 KB state, where `save_state` alone costs
+2.27 ms of a 16.7 ms frame, 1.17× re-simulation does not fit — which is exactly
+why The Last Blade 2 fell to 56 fps at Tokyo while the arena held 59.5.
+
+**Buying the same result with input delay costs the player instead.** Eight
+frames of delay also removes the stalls, but caps depth at 8 and halves the
+re-simulation to 0.50×. The CPU is comfortable. The price is 133 ms of input
+lag, which in a fighting game is roughly the difference between a reactable
+move and an unreactable one.
+
+**The middle is the honest answer.** `both` — 6 frames of delay with a 16-frame
+window — holds 60 fps with no stalls, at 0.84× re-simulation and 100 ms of lag.
+
+The trade is not between "good" and "bad" configurations. It is a choice of
+**who pays for the distance**: the CPU, through deeper speculation and more
+re-simulation, or the player, through input lag. The window sets the split.
+
+There is no configuration that makes 267 ms feel like 50 ms, and it is worth
+being clear that none of these is a fix in that sense. What tuning buys is a
+smooth 60 Hz with honest input lag, instead of 56 Hz with unpredictable freezes.
+The second is worse to play even though its average latency is lower.
+
+### A deadlock this found that the cloud runs could not
+
+The sweep did not run the first time. Both peers connected, both filled the
+prediction window, both stalled, and both sat at `depth=8` forever.
+
+The frame loop skipped `transport.pump()` on the stalled path, on the reasoning
+that a stalled peer should "do no local work at all". But `pump` is what moves
+the network emulator's delay queue onto the socket. A datagram already handed to
+`send` is **in flight**, and a real network delivers it whether or not the
+sender sends anything more. Modelling flight as a queue that only advances when
+the sender acts is fine until the sender stops — and the sender stops precisely
+when it is starving for what is in that queue. Each peer held the other's
+inputs hostage.
+
+It needs one-way delay to exceed the prediction window before it can bite, which
+is why no profile up to `combined` (40 ms against a 133 ms window) ever showed
+it in eighteen months of benchmarks. And the AWS runs could not have found it:
+there the delay is the real network, which needs no pumping.
+
+Fixed by pumping on the stalled path too, and guarded by
+`two_peers_that_stall_at_once_still_deliver_what_is_already_in_flight`, which
+deadlocks against the old code and passes against the new.
+
+A synthetic model found a bug that the real thing structurally could not. That
+is the argument for keeping both.
+
 ## The numbers here come from un-recorded sessions
 
 Worth stating outright, because it is easy to conflate: the videos in
@@ -356,8 +563,19 @@ for s in 1 2 3 4 5; do SEED=$s DURATION=60 ./ops/scripts/bench.sh; done
 just bench 180 lastblade2 /path/lastbld2.zip
 ```
 
-The most interesting question this lab is set up to answer and has not:
-**which input delay minimises the sum of perceived latency and visible
-corrections, for a given network profile?** Every number needed is already in
-`summary.csv`, and [15 — Elastic](15-elastic.md) has the per-event detail to go
-with it.
+```bash
+# the tuning sweep on a different link, or with your own configurations
+PROFILE=combined ./ops/scripts/tuning-sweep.sh
+CONFIGS="a:0:8:16 b:2:12:20 c:4:16:24" ./ops/scripts/tuning-sweep.sh
+```
+
+The question this lab is set up to answer and has only half answered: **which
+input delay minimises the sum of perceived latency and visible corrections, for
+a given network profile?** The sweep above measures both halves of that sum
+separately — input lag in milliseconds, corrections as rollback depth and
+re-simulation ratio — for one link and four configurations. What it cannot
+supply is the exchange rate between them, because that is a question about
+perception, and nobody has played a session on this lab yet.
+
+Every number needed for the measurable half is in `summary.csv`, and
+[15 — Elastic](15-elastic.md) has the per-event detail to go with it.

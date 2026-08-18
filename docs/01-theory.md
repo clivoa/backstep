@@ -145,6 +145,12 @@ do something else: **make the mechanism visible and measurable.**
   toy: the same engine drives an opaque 415 KB arcade machine, and
   [14 — Video](14-video.md) shows it happening.
 
+## Going deeper
+
+This document argues why. [16 — The algorithm](16-algorithm.md) covers how: the
+data structures, the frame lifecycle, `reconcile()` and `rollback_to()` line by
+line, the invariants that hold it together, and the complexity of each step.
+
 ## Further reading
 
 - GGPO (Tony Cannon), the implementation that set the standard.

@@ -65,7 +65,8 @@ The loop lives in `rollback-runner/src/runner.rs`. The order is deliberate.
 ```
 1. receive        drain the socket; remote inputs land first, so a rollback
                   happens BEFORE we build anything else on top
-2. would_stall?   if the prediction window is full, do no local work at all
+2. would_stall?   if the prediction window is full, do no new local work --
+                  but keep transmitting, and check the peer is alive
 3. read input     human controller or bot FSM
 4. send           the batch goes out BEFORE simulating, to buy the peer a frame
 5. advance        simulate and present
@@ -87,11 +88,25 @@ get wrong.
 **4 before 5.** Simulating takes time, and that time is pure latency for the
 peer.
 
-Step 7 is also where the liveness check lives, and it has a scar: it used to sit
-only at the end of the function, after the stalled branch returned early. A peer
-whose partner died was therefore the one peer that never looked. One sat at
-20 735 stalls waiting for a frame that was never coming. See
-[05 — Determinism](05-determinism.md).
+**"No local work" has two exceptions, and both are scars.**
+
+Step 7 is where the liveness check lives, and it used to sit *only* there, after
+the stalled branch returned early. A peer whose partner died was therefore the
+one peer that never looked. One sat at 20 735 stalls waiting for a frame that
+was never coming. See [05 — Determinism](05-determinism.md).
+
+Transmission is the other. A stalled peer must keep pumping the transport, because
+a datagram already handed to `send` is *in flight* and a real network delivers it
+regardless of what the sender does next. Skipping the pump deadlocked two peers
+that stalled at the same moment: each held the inputs the other was starving for.
+It only shows up when one-way delay exceeds the prediction window, which is why
+it survived every profile up to `combined`. See
+[08](08-experiments.md#a-deadlock-this-found-that-the-cloud-runs-could-not).
+
+The pattern is worth naming, because it caught the same code twice: a stall
+means "produce nothing new", not "stop participating". Anything that keeps the
+session honest about the outside world — noticing the peer, delivering what is
+already committed — has to run on both paths.
 
 ## Where each concern lives
 

@@ -38,6 +38,10 @@ sleep 5
 echo "==> downloading from s3://${BUCKET}/remote"
 aws s3 sync "s3://${BUCKET}/remote/artifacts/video" "${ROOT}/artifacts/video/remote" \
     --region "${REGION}" --only-show-errors || true
+# Count what is already here. A run whose logs get overwritten is a run that
+# has to be paid for again, and the numbers in the docs stop being checkable.
+BEFORE="$(find "${LOG_DIR}" -name '*.jsonl' 2>/dev/null | wc -l)"
+
 aws s3 sync "s3://${BUCKET}/remote/artifacts/logs" "${LOG_DIR}" \
     --region "${REGION}" --only-show-errors
 aws s3 cp "s3://${BUCKET}/remote/bootstrap.log" "${ROOT}/artifacts/remote-bootstrap.log" \
@@ -47,8 +51,10 @@ echo "==> building the report"
 cargo build --release -p rollback-report
 "${ROOT}/target/release/rollback-report" --logs "${LOG_DIR}" --out "${REPORT_DIR}"
 
+AFTER="$(find "${LOG_DIR}" -name '*.jsonl' | wc -l)"
+
 echo
-echo "==> collected"
+echo "==> collected (${BEFORE} session log(s) were already here, ${AFTER} now)"
 find "${LOG_DIR}" -name '*.jsonl' -printf '  %f  %s bytes\n' | sort
 echo
 echo "  ${REPORT_DIR}/summary.csv"

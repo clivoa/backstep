@@ -60,6 +60,11 @@ struct Args {
     #[arg(long, default_value_t = SessionConfig::default().prediction_limit)]
     prediction_limit: u8,
 
+    /// How many saved states to keep. Must exceed `--prediction-limit`, and
+    /// must match the peer.
+    #[arg(long, default_value_t = SessionConfig::default().state_history)]
+    state_history: u8,
+
     /// Seconds to play. 0 means until the window is closed.
     #[arg(long, default_value_t = 0)]
     duration: u64,
@@ -107,6 +112,7 @@ fn main() -> Result<()> {
         seed: args.seed,
         input_delay: args.input_delay,
         prediction_limit: args.prediction_limit,
+        state_history: args.state_history,
         network: profile,
         ..Default::default()
     };

@@ -19,6 +19,15 @@ BIOS="${BIOS:-${ROOT}/artifacts/system/neogeo.zip}"
 PROFILE="${PROFILE:-natural}"
 SEED="${SEED:-4242}"
 DURATION="${DURATION:-180}"
+# Goes into the session log's filename, so runs from different scenarios never
+# look alike on disk. Losing a run to an ambiguous filename costs a rebuild of
+# the whole session; a label costs nothing.
+MODE="${MODE:-play}"
+# These are part of the handshake's configuration hash, so the remote peer must
+# be told the same values or the session is refused before it starts.
+PREDICTION_LIMIT="${PREDICTION_LIMIT:-8}"
+INPUT_DELAY="${INPUT_DELAY:-1}"
+STATE_HISTORY="${STATE_HISTORY:-16}"
 TF_DIR="${ROOT}/terraform"
 
 case "${SIM}" in
@@ -152,7 +161,9 @@ fi
 
 echo "==> starting the remote peer"
 REMOTE_ARGS="--sim ${SIM} --player p2 --bind 0.0.0.0:${PORT} --profile ${PROFILE}"
-REMOTE_ARGS="${REMOTE_ARGS} --seed ${SEED} --duration ${DURATION} --mode play"
+REMOTE_ARGS="${REMOTE_ARGS} --seed ${SEED} --duration ${DURATION} --mode ${MODE}"
+REMOTE_ARGS="${REMOTE_ARGS} --prediction-limit ${PREDICTION_LIMIT} --input-delay ${INPUT_DELAY}"
+REMOTE_ARGS="${REMOTE_ARGS} --state-history ${STATE_HISTORY}"
 REMOTE_ARGS="${REMOTE_ARGS} --log-dir /opt/rollback/artifacts/logs"
 REMOTE_ARGS="${REMOTE_ARGS} --system-dir /opt/rollback/artifacts/system"
 if [[ ${RECORD:-0} -eq 1 && ${NEEDS_ROM} -eq 1 ]]; then

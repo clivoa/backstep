@@ -11,7 +11,7 @@ as reference.
 - [The core idea](#the-core-idea)
 - [Rollback: the pieces](#rollback-the-pieces)
 - [Networks: what breaks the conversation](#networks-what-breaks-the-conversation)
-- [The five network profiles](#the-five-network-profiles)
+- [The network profiles](#the-network-profiles)
 - [The metrics this lab reports](#the-metrics-this-lab-reports)
 - [Emulation and libretro](#emulation-and-libretro)
 - [Determinism](#determinism)
@@ -305,7 +305,7 @@ matching a reply to a send) and **inferring loss** from gaps in the sequence.
 
 "Inferring" is the right word. A delayed datagram looks lost until it arrives.
 
-## The five network profiles
+## The network profiles
 
 A **profile** is synthetic impairment the lab injects into each peer's
 **outgoing** datagrams. It is the independent variable: the real network
@@ -323,6 +323,11 @@ underneath is loopback, so what you measure is the profile and nothing else.
 | `jitter30` | 30 ms | ±15 ms | — | — | 84–88 ms |
 | `loss2` | — | — | 2% | — | 27 ms |
 | `combined` | 40 ms | ±20 ms | 2% | 0.5% | 97–105 ms |
+| `transcontinental` | 133 ms | ±5 ms | — | — | 267 ms |
+
+`transcontinental` is a later addition and is not part of `just bench`. It
+reproduces a link that was measured rather than imagined, and it is the only
+profile that breaks the default configuration.
 
 ### `natural`, the control
 
@@ -393,6 +398,28 @@ and a 16-state buffer have headroom.
 zero desyncs. The stalls show the prediction limit being touched, which means
 the sizing is being exercised for real rather than with comfortable margin.
 
+### `transcontinental`, past the window
+
+133 ms delay, ±5 ms jitter, no loss.
+
+**Imitates:** Madrid to São Paulo, or Madrid to Tokyo. Both measured 267 ms
+round trip with about a millisecond of variance, so this profile is calibrated
+against real links rather than guessed at. Intercontinental fibre turns out to
+be **slow but very steady** — the opposite of what `jitter30` assumes.
+
+**Used for:** the case the other five cannot reach. 133 ms one way is exactly
+the 8-frame prediction window, so this is the only profile where an input
+*cannot* arrive in time, no matter how healthy the link.
+
+**Result:** the default configuration stalls 269 times in 90 seconds and drops
+to 57 fps. Raising `prediction_limit` to 20 removes every stall but doubles the
+frames simulated; adding 8 frames of input delay removes them too, at 133 ms of
+lag the player feels. Full comparison in
+[08](08-experiments.md#fixing-a-link-that-is-too-long-the-tuning-sweep).
+
+This profile is why the lab has a tuning sweep at all. It also found a deadlock
+in the stalled path that no real network could have provoked.
+
 ### Why rollbacks are asymmetric
 
 The most counter-intuitive result in the experiments: under `delay20`, one peer
@@ -411,6 +438,12 @@ nothing about network quality; it says who started first.
 The real session made that vivid. Over the same Madrid–Frankfurt link, fifteen
 minutes apart, Madrid paid 1 280 rollbacks to Frankfurt's 31 on one run, then
 Frankfurt paid 601 to Madrid's 19 on the next.
+
+**It also goes away when the link gets bad enough.** At 267 ms both peers
+saturate the prediction window and stall, and stalling re-couples their clocks:
+São Paulo and Tokyo produced counts within 4% of each other on both simulations.
+The asymmetry needs slack to exist, so it is a feature of good connections. On a
+bad one, both players pay.
 
 The sign that both peers are playing the same game is not symmetric rollbacks.
 It is `checksums_compared` rising on both sides with `desync = false`.

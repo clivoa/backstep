@@ -172,6 +172,20 @@ impl<S: Simulation> SessionRunner<S> {
         if self.session.would_stall() {
             let waiting_for = self.session.remote_confirmed_through() + 1;
             let _ = self.session.advance()?; // records the stall and the event
+
+            // Keep transmitting. A datagram already handed to `send` is in
+            // flight, and a real network delivers it whether or not the sender
+            // sends anything more; the emulator only moves its delay queue when
+            // `pump` is called. Skipping this here deadlocks the exact case it
+            // matters in: a peer stalls because it is starving, stops pumping,
+            // and strands the very inputs the other side is starving for.
+            //
+            // It needs one-way delay to exceed the prediction window before it
+            // can bite, which is why no profile up to `combined` (40 ms against
+            // a 133 ms window) ever showed it, and why the AWS runs could not:
+            // there the delay is the real network, which needs no pumping.
+            self.transport.pump()?;
+
             self.drain_events()?;
             self.publish()?;
             if let Some(outcome) = self.check_peer_liveness()? {
@@ -631,6 +645,62 @@ mod tests {
         );
 
         alive.finish("timeout").unwrap();
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn two_peers_that_stall_at_once_still_deliver_what_is_already_in_flight() {
+        // Found by running a 267 ms link, the measured Madrid-to-Tokyo round
+        // trip, through the emulator rather than over the real internet.
+        //
+        // Both peers fill the 8-frame prediction window before the first
+        // delayed datagram is due. Both stall. The stalled branch used to skip
+        // `transport.pump`, so neither released its queue, so the inputs each
+        // was starving for sat in the other's memory -- a permanent deadlock,
+        // with both processes reporting a healthy `depth=8` forever.
+        //
+        // The delay only has to outlast the time it takes to fill the window,
+        // which is why 50 ms reproduces it here while the real 20-40 ms
+        // profiles never did.
+        let dir = temp_dir("stall-deadlock");
+        let profile = NetworkProfile {
+            delay_ms: 50,
+            ..NetworkProfile::NATURAL
+        };
+        let (mut p1, mut p2) = linked_pair(&dir, profile);
+
+        let mut stalled = false;
+        for _ in 0..400 {
+            // Both peers step every iteration, and the results are bound before
+            // being combined. Folding them with `||` directly would short-
+            // circuit: the moment p1 stalled, p2 would stop being stepped, and
+            // the test would stage its own deadlock rather than detect one.
+            let a = p1.step(PlayerInput(1)).unwrap();
+            let b = p2.step(PlayerInput(2)).unwrap();
+            stalled |= matches!(a, StepOutcome::Stalled { .. })
+                || matches!(b, StepOutcome::Stalled { .. });
+            std::thread::sleep(Duration::from_millis(1));
+        }
+
+        assert!(
+            stalled,
+            "a delay longer than the prediction window must stall someone"
+        );
+        // Recovery is the actual assertion. Stalling is expected and fine;
+        // never getting out of it is the bug.
+        assert!(
+            p1.session().confirmed_frame() > 8,
+            "p1 never got past the first window: confirmed={}",
+            p1.session().confirmed_frame()
+        );
+        assert!(
+            p2.session().confirmed_frame() > 8,
+            "p2 never got past the first window: confirmed={}",
+            p2.session().confirmed_frame()
+        );
+
+        p1.finish("done").unwrap();
+        p2.finish("done").unwrap();
         std::fs::remove_dir_all(dir).ok();
     }
 

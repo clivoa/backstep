@@ -1,7 +1,7 @@
 # 04 — Running it locally
 
 > Not sure what a *network profile* is, or what `delay20` means? See
-> [00 — Glossary: the five profiles](00-glossary.md#the-five-network-profiles).
+> [00 — Glossary: the network profiles](00-glossary.md#the-network-profiles).
 
 ## Controls
 

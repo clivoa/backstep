@@ -1,4 +1,4 @@
-# Rollback Netcode Lab: Madrid ⇄ AWS Frankfurt
+# Rollback Netcode Lab: Madrid ⇄ Frankfurt, São Paulo, Tokyo
 
 A Rust workspace that demonstrates rollback netcode at two levels:
 
@@ -7,10 +7,14 @@ A Rust workspace that demonstrates rollback netcode at two levels:
 2. **The Last Blade 2** running on the official FBNeo core through the libretro
    API, driven by exactly the same rollback engine.
 
-The local player drives P1 through SDL2. A headless EC2 instance in Frankfurt
-drives P2 through a scripted FSM. The peers exchange only inputs, over UDP
-authenticated with HMAC-SHA256, while Prometheus, Grafana, JSONL logs and an
-HTML report record connectivity, predictions, rollbacks and desyncs.
+The local player drives P1 through SDL2. A headless EC2 instance drives P2
+through a scripted FSM. The peers exchange only inputs, over UDP authenticated
+with HMAC-SHA256, while Prometheus, Grafana, JSONL logs and an HTML report
+record connectivity, predictions, rollbacks and desyncs.
+
+Both simulations ran from one desk in Madrid against three AWS regions on three
+continents, so distance is a variable the results actually cover rather than an
+assumption.
 
 ![A rollback session, delay20 profile](docs/media/rollback-delay20.gif)
 
@@ -21,24 +25,35 @@ underneath does not stutter.*
 
 ## Results
 
-Both simulations ran between a desktop in Madrid and an EC2 instance in
-Frankfurt, over the public internet.
+Both simulations ran between a desktop in Madrid and EC2 instances in Frankfurt,
+São Paulo and Tokyo, over the public internet.
 
 | | Arena | The Last Blade 2 |
 |---|---|---|
 | Snapshot size | 204 bytes | 415 155 bytes |
 | CPU, 300 s session | ~2 s | ~116 s |
-| Prediction accuracy | 91.7% | 92.9% |
-| Checksums compared | 149 | 300 |
+| Prediction accuracy | 92.7–95.5% | 91.5–92.7% |
 | Desyncs | 0 | 0 |
 
-449 checksum comparisons agreed across two different CPUs, two operating systems
-and two libcs. That is the evidence behind the determinism rules in
-[05](docs/05-determinism.md), and two processes of one binary on one machine
-could never have produced it.
+**2 997 checksum comparisons agreed, across three continents and zero desyncs.**
+Two different CPUs, two operating systems, two libcs. That is the evidence
+behind the determinism rules in [05](docs/05-determinism.md), and two processes
+of one binary on one machine could never have produced it.
 
-Full numbers, including all five synthetic network profiles, are in
-[08 — Experiments](docs/08-experiments.md).
+What distance does, at a glance:
+
+| From Madrid to | SRTT | Max depth | Stalls | FPS |
+|---|---|---|---|---|
+| Frankfurt | 50 ms | 3 | 0 | 60.01 |
+| São Paulo | 272 ms | 8 (the limit) | 827 | 57.37 |
+| Tokyo | 267 ms | 8 (the limit) | 1 283 | 56.01 |
+
+The default 8-frame prediction window is 133 ms at 60 Hz — exactly one way at
+267 ms. Beyond that the session stops speculating and waits, which is the design
+working correctly and also the point at which it needs retuning. What that
+retuning costs, and who pays for it, is measured in
+[08 — Experiments](docs/08-experiments.md) along with all five synthetic
+profiles.
 
 ## Documentation
 
@@ -60,6 +75,7 @@ Full numbers, including all five synthetic network profiles, are in
 | [13 — Coverage](docs/13-coverage.md) | What was validated, what was not |
 | [14 — Video](docs/14-video.md) | Recording sessions, and watching rollback happen |
 | [15 — Elastic](docs/15-elastic.md) | Per-event analysis: what `summary.csv` cannot answer |
+| [16 — The algorithm](docs/16-algorithm.md) | Data structures, invariants, code paths, complexity |
 
 ## Quick start
 
@@ -162,5 +178,8 @@ Nothing in the measured results depends on SFA3, and nothing claims it ran.
 ## Out of scope
 
 STUN, relay, matchmaking, spectating, reconnection, state synchronisation,
-Tekken 3, vision-based AI, memory-reading bots, and multiple regions. Fightcade
-is a reference point, not a dependency.
+Tekken 3, vision-based AI and memory-reading bots. Fightcade is a reference
+point, not a dependency.
+
+Multiple regions were originally out of scope and are now covered: Frankfurt,
+São Paulo and Tokyo, with `ops/scripts/region-run.sh` to reproduce any of them.

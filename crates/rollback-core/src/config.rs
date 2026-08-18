@@ -116,13 +116,42 @@ impl NetworkProfile {
                     ..NetworkProfile::NATURAL
                 },
             ),
+            // Madrid to São Paulo and Madrid to Tokyo both measured about
+            // 267 ms round trip with only a few milliseconds of variance, so
+            // one profile stands in for both. Delay is one-way and applied at
+            // each end, hence half the round trip here.
+            //
+            // This is the only profile that exceeds the default 8-frame
+            // prediction window: 133 ms is roughly 8 frames at 60 Hz, so the
+            // window fills before an input can possibly answer. It exists so
+            // the tuning question can be asked without paying for an instance
+            // on another continent. See docs/08-experiments.md.
+            "transcontinental" => (
+                "transcontinental",
+                NetworkProfile {
+                    delay_ms: 133,
+                    jitter_ms: 5,
+                    ..NetworkProfile::NATURAL
+                },
+            ),
             _ => return None,
         };
         Some(profile)
     }
 
     /// Names of all built-in profiles, in the order the report presents them.
-    pub const NAMES: [&'static str; 5] = ["natural", "delay20", "jitter30", "loss2", "combined"];
+    ///
+    /// `just bench` and the E2E run the first five. `transcontinental` is not
+    /// in that set because it is a tuning tool rather than a baseline, and
+    /// including it would change every historical benchmark row.
+    pub const NAMES: [&'static str; 6] = [
+        "natural",
+        "delay20",
+        "jitter30",
+        "loss2",
+        "combined",
+        "transcontinental",
+    ];
 
     /// Lowest delay this profile can produce, in milliseconds.
     pub fn min_delay_ms(&self) -> u32 {
